@@ -14,7 +14,7 @@ pub fn getTerminalSize() !Size {
 
 fn linuxGetTerminalSize() !Size {
     var wsz: std.os.linux.winsize = undefined;
-    const rc = std.os.linux.ioctl(std.io.getStdOut().handle, std.os.linux.T.IOCGWINSZ, @ptrToInt(&wsz));
+    const rc = std.os.linux.ioctl(std.io.getStdOut().handle, std.os.linux.T.IOCGWINSZ, @intFromPtr(&wsz));
     switch (std.os.linux.getErrno(rc)) {
         .SUCCESS => {},
         else => return error.GetTerminalSizeFailed,
@@ -28,8 +28,8 @@ fn windowsGetTerminalSize() !Size {
         return error.GetTerminalSizeFailed;
     }
     return .{
-        .columns = @intCast(u16, info.srWindow.Right - info.srWindow.Left + 1),
-        .rows = @intCast(u16, info.srWindow.Bottom - info.srWindow.Top + 1),
+        .columns = @intCast(info.srWindow.Right - info.srWindow.Left + 1),
+        .rows = @intCast(info.srWindow.Bottom - info.srWindow.Top + 1),
     };
 }
 
