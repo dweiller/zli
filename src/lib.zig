@@ -86,16 +86,18 @@ pub fn writeOptions(
 ) !void {
     const long_fmt = std.fmt.comptimePrint("{{s: <{d}}}", .{longest});
 
-    const help_padding = 9 + longest + "  -h, --".len;
+    const separator = " " ** 8;
+    const indent_size = 2;
+    const help_padding = indent_size + separator.len + longest + "  -h, --".len;
 
     const max_width = if (columns) |width| max: {
         if (width < min_width + help_padding) break :max null;
         break :max @min(width, help_padding + max_col_width);
     } else null;
 
-    const option_fmt_short_long = "  -{c}, --" ++ long_fmt ++ "\t";
-    const option_fmt_long = "      --" ++ long_fmt ++ "\t";
-    const option_fmt_short = "  -{c}    " ++ [_]u8{' '} ** longest ++ "\t";
+    const option_fmt_short_long = "  -{c}, --" ++ long_fmt ++ separator;
+    const option_fmt_long = "      --" ++ long_fmt ++ separator;
+    const option_fmt_short = "  -{c}    " ++ [_]u8{' '} ** longest ++ separator;
 
     inline for (spec) |arg| {
         if (max_width) |width| switch (arg.name) {
@@ -130,7 +132,7 @@ fn writeAlignedTo(writer: anytype, padding: usize, end: usize, bytes: []const u8
     // first line doesn't need padding
     while (std.mem.indexOfScalarPos(u8, bytes, current, ' ')) |i| : (current = i + 1) {
         if (i - index > width) {
-            try writer.print("{s}\n", .{bytes[index..current]});
+            try writer.print("{s}\n", .{bytes[index .. current - 1]});
             index = current;
             break;
         }
@@ -142,7 +144,7 @@ fn writeAlignedTo(writer: anytype, padding: usize, end: usize, bytes: []const u8
     while (std.mem.indexOfScalarPos(u8, bytes, current, ' ')) |i| : (current = i + 1) {
         if (i - index > width) {
             try writer.writeByteNTimes(' ', padding);
-            try writer.print("{s}\n", .{bytes[index..current]});
+            try writer.print("{s}\n", .{bytes[index .. current - 1]});
             index = current;
         }
     } else {
