@@ -1,6 +1,6 @@
 # zli
 
-zli is a CLI argument parsing module for Zig. The aim is to use delcare CLI paramters in a simple, declarative way and have zli parse them as well as generate `--help` and `--version` flags as well as usage error messages.
+zli is a CLI argument parsing module for Zig. The aim is to provide CLI parameters in a simple, declarative way and have zli parse them as well as generate `--help` and `--version` flags and usage error messages.
 
 ## usage
 A usage example is given by `src/main.zig`. CLI parameters are declared like so:
@@ -53,7 +53,7 @@ Options:
 ```
 which can you can see by running `zig build run -- --help`.
 
-To use zli in a project you can use the Zig package manager by using `https://github.com/dweiller/zli/archive/[[COMMIT-SHA]].tar.gz` as the dependency url and then grabbing the 'zli' module, e.g.:
+To use zli in a project you can use the Zig package manager by using `https://github.com/dweiller/zli/archive/[[COMMIT-SHA]].tar.gz` as the dependency URL and then grabbing the 'zli' module, e.g.:
 
 `build.zig.zon`:
 ```
