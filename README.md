@@ -62,7 +62,7 @@ To use zli in a project you can use the Zig package manager by using `https://gi
     .version = '0.1.0',
     .dependencies = .{
         .zli = .{
-            .url = "https://github.com/dweiller/zlil/archive/[[commit-SHA]].tar.gz",
+            .url = "https://github.com/dweiller/zli/archive/[[commit-SHA]].tar.gz",
         },
     }
 }
