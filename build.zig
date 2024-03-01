@@ -5,7 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     _ = b.addModule("zli", .{
-        .source_file = .{ .path = "src/lib.zig" },
+        .root_source_file = .{ .path = "src/lib.zig" },
     });
 
     const exe = b.addExecutable(.{
