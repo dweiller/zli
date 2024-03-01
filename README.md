@@ -77,7 +77,7 @@ pub fn build(b: *std.Build) void {
     const exe = ...; // your executable
 
     const zli = b.dependency("zli").module("zli");
-    exe.addModule(zli);
+    exe.root_module.addImport("zli", zli);
 
     // -- snip --
 }
