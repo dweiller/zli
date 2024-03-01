@@ -320,7 +320,7 @@ pub fn parse(allocator: std.mem.Allocator, comptime args: []const Arg) !ParseRes
 }
 
 pub const ArgName = union(enum) {
-    long: struct { full: []const u8, short: ?u8 = null },
+    long: struct { full: [:0]const u8, short: ?u8 = null },
     short: u8,
 
     pub fn format(
@@ -396,7 +396,7 @@ pub const Arg = struct {
     short_help: []const u8,
     type: type = []const u8,
 
-    pub fn fieldName(comptime arg: Arg) []const u8 {
+    pub fn fieldName(comptime arg: Arg) [:0]const u8 {
         return switch (arg.name) {
             .long => |n| n.full,
             .short => |c| std.fmt.comptimePrint("{c}", .{c}),
