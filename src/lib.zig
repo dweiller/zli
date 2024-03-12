@@ -175,8 +175,11 @@ pub fn ParseResult(comptime spec: []const Arg) type {
             switch (self) {
                 .ok => |ok| {
                     inline for (std.meta.fields(@TypeOf(ok.options))) |field| {
-                        if (@typeInfo(field.type) == .Pointer) {
-                            allocator.free(@field(ok.options, field.name));
+                        const Child = @typeInfo(field.type).Optional.child;
+                        if (@typeInfo(Child) == .Pointer) {
+                            if (@field(ok.options, field.name)) |slice| {
+                                allocator.free(slice);
+                            }
                         }
                     }
                     for (ok.positional) |arg| allocator.free(arg);
