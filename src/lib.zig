@@ -27,11 +27,14 @@ pub fn CliCommand(
             break :length length;
         };
 
-        pub fn parse(allocator: std.mem.Allocator) !ParseResult(args) {
+        pub fn parse(allocator: std.mem.Allocator) Allocator.Error!ParseResult(args) {
             return zli.parse(allocator, args);
         }
 
-        pub fn parseWithArgs(allocator: Allocator, args_iter: *ArgIterator) !ParseResult(args) {
+        pub fn parseWithArgs(
+            allocator: Allocator,
+            args_iter: *ArgIterator,
+        ) Allocator.Error!ParseResult(args) {
             return zli.parseWithArgs(allocator, args, args_iter);
         }
 
@@ -312,7 +315,10 @@ pub fn parseWithArgs(
     } };
 }
 
-pub fn parse(allocator: std.mem.Allocator, comptime args: []const Arg) !ParseResult(args) {
+pub fn parse(
+    allocator: std.mem.Allocator,
+    comptime args: []const Arg,
+) Allocator.Error!ParseResult(args) {
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     _ = args_iter.skip();
