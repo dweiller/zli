@@ -15,6 +15,8 @@ pub fn CliCommand(
 
     return struct {
         pub const args = argsWithDefaults(options.parameters);
+        pub const ParsedResult = ParseResult(args);
+        pub const ParsedArgs = ParseResult(args).Parsed;
 
         const longest_arg_name = length: {
             var length = 0;
@@ -27,14 +29,14 @@ pub fn CliCommand(
             break :length length;
         };
 
-        pub fn parse(allocator: std.mem.Allocator) Allocator.Error!ParseResult(args) {
+        pub fn parse(allocator: std.mem.Allocator) Allocator.Error!ParsedResult {
             return zli.parse(allocator, args);
         }
 
         pub fn parseWithArgs(
             allocator: Allocator,
             args_iter: *ArgIterator,
-        ) Allocator.Error!ParseResult(args) {
+        ) Allocator.Error!ParsedResult {
             return zli.parseWithArgs(allocator, args, args_iter);
         }
 
@@ -168,7 +170,7 @@ pub fn writeVersion(
 
 pub fn ParseResult(comptime spec: []const Arg) type {
     return union(enum) {
-        ok: struct { options: Options(spec), positional: []const []const u8 },
+        ok: Parsed,
         err: Err,
 
         pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
@@ -189,7 +191,12 @@ pub fn ParseResult(comptime spec: []const Arg) type {
             }
         }
 
-        const Err = struct {
+        pub const Parsed = struct {
+            options: Options(spec),
+            positional: []const []const u8,
+        };
+
+        pub const Err = struct {
             arg_name: []const u8,
             string: []const u8,
             err: Error,
