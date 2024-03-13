@@ -14,7 +14,10 @@ pub fn CliCommand(
     checkNameClash(options.parameters, options.include_defaults);
 
     return struct {
-        pub const args = argsWithDefaults(options.parameters);
+        pub const args = if (options.include_defaults)
+            argsWithDefaults(options.parameters)
+        else
+            options.parameters;
         pub const ParsedResult = ParseResult(args);
         pub const ParsedArgs = ParseResult(args).Parsed;
 
