@@ -46,7 +46,7 @@ pub fn CliCommand(
         pub fn printHelpAndExit() noreturn {
             const stdout = std.io.getStdOut();
             const columns: ?usize = if (stdout.isTty())
-                (@import("util.zig").getTerminalSize() catch std.os.exit(1)).columns
+                (getTerminalSize() catch std.os.exit(1)).columns
             else
                 null;
 
@@ -520,6 +520,8 @@ fn failCompilationBadType(comptime T: type) noreturn {
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const ArgIterator = std.process.ArgIterator;
+
+const getTerminalSize = @import("util.zig").getTerminalSize;
 
 test {
     _ = std.testing.refAllDecls(@This());

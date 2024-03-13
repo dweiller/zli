@@ -52,4 +52,4 @@ pub fn main() !void {
 
 const std = @import("std");
 
-const zli = @import("lib.zig");
+const zli = @import("root.zig");
