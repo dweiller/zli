@@ -469,7 +469,7 @@ pub fn Options(comptime args: []const Arg) type {
     }
     return @Type(.{
         .Struct = .{
-            .layout = .Auto,
+            .layout = .auto,
             .fields = &fields,
             .decls = &.{},
             .is_tuple = false,
