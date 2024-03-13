@@ -19,7 +19,7 @@ pub fn CliCommand(
         else
             options.parameters;
         pub const ParsedResult = ParseResult(args);
-        pub const ParsedArgs = ParseResult(args).Parsed;
+        pub const Params = ParsedResult.Params;
 
         const longest_arg_name = length: {
             var length = 0;
@@ -173,7 +173,7 @@ pub fn writeVersion(
 
 pub fn ParseResult(comptime spec: []const Arg) type {
     return union(enum) {
-        ok: Parsed,
+        ok: Params,
         err: Err,
 
         pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
@@ -194,7 +194,7 @@ pub fn ParseResult(comptime spec: []const Arg) type {
             }
         }
 
-        pub const Parsed = struct {
+        pub const Params = struct {
             options: Options(spec),
             positional: []const []const u8,
         };
