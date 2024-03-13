@@ -50,12 +50,17 @@ pub fn CliCommand(
             else
                 null;
 
-            const writer = stdout.writer();
-            writer.print("{s} {}\n", .{ name, version }) catch std.os.exit(1);
-            if (options.help_message.len > 0)
-                writer.writerAll(options.help_message);
-            writer.writeAll("\nOptions:\n\n") catch std.os.exit(1);
-            writeOptions(writer, longest_arg_name, columns, 40, 60, args) catch std.os.exit(1);
+            printHelp(
+                stdout.writer(),
+                columns,
+                .{
+                    .name = name,
+                    .version = version,
+                    .help_message = options.help_message,
+                    .longest_arg_len = longest_arg_name,
+                    .args = options.parameters,
+                },
+            ) catch std.os.exit(1);
             std.os.exit(0);
         }
 
@@ -65,6 +70,31 @@ pub fn CliCommand(
             std.os.exit(0);
         }
     };
+}
+
+fn printHelp(
+    writer: anytype,
+    columns: ?usize,
+    comptime options: struct {
+        name: []const u8,
+        version: std.SemanticVersion,
+        help_message: []const u8,
+        longest_arg_len: comptime_int,
+        args: []const Arg,
+    },
+) !void {
+    try writer.print("{s} {}\n", .{ options.name, options.version });
+    if (options.help_message.len > 0)
+        try writer.writerAll(options.help_message);
+    try writer.writeAll("\nOptions:\n\n");
+    try writeOptions(
+        writer,
+        options.longest_arg_len,
+        columns,
+        40,
+        60,
+        options.args,
+    );
 }
 
 const default_args = [_]Arg{
