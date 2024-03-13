@@ -319,7 +319,7 @@ pub fn parseWithArgs(
                                 .One, .Many, .C => failCompilationBadType(s.type),
                                 .Slice => {
                                     if (p.child != u8) failCompilationBadType(s.type);
-                                    break :f try allocator.dupe(u8, value);
+                                    break :f try allocator.dupeZ(u8, value);
                                 },
                             },
                             .Enum => break :f std.meta.stringToEnum(s.type, value) orelse return .{
