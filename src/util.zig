@@ -15,7 +15,7 @@ pub fn getTerminalSize() !Size {
 fn linuxGetTerminalSize() !Size {
     var wsz: std.os.linux.winsize = undefined;
     const rc = std.os.linux.ioctl(std.io.getStdOut().handle, std.os.linux.T.IOCGWINSZ, @intFromPtr(&wsz));
-    switch (std.os.linux.getErrno(rc)) {
+    switch (std.os.linux.E.init(rc)) {
         .SUCCESS => {},
         else => return error.GetTerminalSizeFailed,
     }
