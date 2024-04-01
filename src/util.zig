@@ -8,7 +8,7 @@ pub fn getTerminalSize() !Size {
     switch (builtin.os.tag) {
         .linux => return linuxGetTerminalSize(),
         .windows => return windowsGetTerminalSize(),
-        else => @compileError("unsupported OS " ++ @typeName(builtin.os.tag)),
+        else => @compileError("unsupported OS " ++ @tagName(builtin.os.tag)),
     }
 }
 
