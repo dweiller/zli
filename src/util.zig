@@ -33,14 +33,4 @@ fn windowsGetTerminalSize() !Size {
     };
 }
 
-fn macosGetTerminalSize() !Size {
-    var wsz: std.os.darwin.winsize = undefined;
-    const rc = std.os.darwin.ioctl(std.io.getStdOut().handle, std.os.darwin.T.IOCGWINSZ, &wsz);
-    switch (std.os.darwin.getErrno(rc)) {
-        .SUCCESS => {},
-        else => return error.GetTerminalSizeFailed,
-    }
-    return .{ .columns = wsz.ws_col, .rows = wsz.ws_row };
-}
-
 const std = @import("std");
