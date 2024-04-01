@@ -46,7 +46,7 @@ pub fn CliCommand(
         pub fn printHelpAndExit() noreturn {
             const stdout = std.io.getStdOut();
             const columns: ?usize = if (stdout.isTty())
-                (getTerminalSize() catch std.os.exit(1)).columns
+                (getTerminalSize() catch std.process.exit(1)).columns
             else
                 null;
 
@@ -60,14 +60,14 @@ pub fn CliCommand(
                     .longest_arg_len = longest_arg_name,
                     .args = options.parameters,
                 },
-            ) catch std.os.exit(1);
-            std.os.exit(0);
+            ) catch std.process.exit(1);
+            std.process.exit(0);
         }
 
         pub fn printVersionAndExit() noreturn {
             const writer = std.io.getStdOut().writer();
-            writeVersion(writer, name, version, "") catch std.os.exit(1);
-            std.os.exit(0);
+            writeVersion(writer, name, version, "") catch std.process.exit(1);
+            std.process.exit(0);
         }
     };
 }
