@@ -226,7 +226,7 @@ pub fn ParseResult(comptime spec: []const Arg) type {
 
         pub const Params = struct {
             options: Options(spec),
-            positional: []const []const u8,
+            positional: []const [:0]const u8,
         };
 
         pub const Err = struct {
@@ -278,7 +278,7 @@ pub fn parseWithArgs(
     args_iter: *std.process.ArgIterator,
 ) !ParseResult(args) {
     var options = Options(args){};
-    var positional = std.ArrayList([]u8).init(allocator);
+    var positional = std.ArrayList([:0]u8).init(allocator);
 
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) break;
@@ -345,12 +345,12 @@ pub fn parseWithArgs(
                     .err = Error.Unrecognized,
                 },
             } else {
-                try positional.append(try allocator.dupe(u8, arg));
+                try positional.append(try allocator.dupeZ(u8, arg));
             }
         }
     }
     while (args_iter.next()) |arg| {
-        try positional.append(try allocator.dupe(u8, arg));
+        try positional.append(try allocator.dupeZ(u8, arg));
     }
     return .{ .ok = .{
         .options = options,
