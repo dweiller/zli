@@ -42,7 +42,7 @@ pub fn main() !void {
         .ok => |ok| ok,
         .err => |err| {
             try stderr.print("{}\n", .{err});
-            std.os.exit(1);
+            std.process.exit(1);
         },
     };
 
