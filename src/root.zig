@@ -36,6 +36,16 @@ pub fn CliCommand(
             return zli.parse(allocator, args);
         }
 
+        pub fn parseOrExit(allocator: std.mem.Allocator, status: u8) ParsedResult {
+            return zli.parse(allocator, args) catch |err| {
+                std.log.err("{s}", .{@errorName(err)});
+                if (@errorReturnTrace()) |trace| {
+                    std.debug.dumpStackTrace(trace.*);
+                }
+                std.process.exit(status);
+            };
+        }
+
         pub fn parseWithArgs(
             allocator: Allocator,
             args_iter: *ArgIterator,
@@ -208,18 +218,7 @@ pub fn ParseResult(comptime spec: []const Arg) type {
 
         pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
             switch (self) {
-                .ok => |ok| {
-                    inline for (std.meta.fields(@TypeOf(ok.options))) |field| {
-                        const Child = @typeInfo(field.type).Optional.child;
-                        if (@typeInfo(Child) == .Pointer) {
-                            if (@field(ok.options, field.name)) |slice| {
-                                allocator.free(slice);
-                            }
-                        }
-                    }
-                    for (ok.positional) |arg| allocator.free(arg);
-                    allocator.free(ok.positional);
-                },
+                .ok => |ok| ok.deinit(allocator),
                 .err => |err| allocator.free(err.string),
             }
         }
@@ -227,6 +226,19 @@ pub fn ParseResult(comptime spec: []const Arg) type {
         pub const Params = struct {
             options: Options(spec),
             positional: []const [:0]const u8,
+
+            pub fn deinit(self: Params, allocator: std.mem.Allocator) void {
+                inline for (std.meta.fields(@TypeOf(self.options))) |field| {
+                    const Child = @typeInfo(field.type).Optional.child;
+                    if (@typeInfo(Child) == .Pointer) {
+                        if (@field(self.options, field.name)) |slice| {
+                            allocator.free(slice);
+                        }
+                    }
+                }
+                for (self.positional) |arg| allocator.free(arg);
+                allocator.free(self.positional);
+            }
         };
 
         pub const Err = struct {

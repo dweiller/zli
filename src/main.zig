@@ -28,26 +28,24 @@ const version = std.SemanticVersion{
 
 const Cli = zli.CliCommand("zli-example-app", version, .{ .parameters = &arg_spec });
 
-pub fn main() !void {
+pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const stderr = std.io.getStdErr().writer();
-
-    const parse_result = try Cli.parse(allocator);
+    const parse_result = Cli.parseOrExit(allocator, 3);
     defer parse_result.deinit(allocator);
 
-    const parsed_args = switch (parse_result) {
+    const params = switch (parse_result) {
         .ok => |ok| ok,
         .err => |err| {
-            try stderr.print("{}\n", .{err});
+            std.debug.print("{}\n", .{err});
             std.process.exit(1);
         },
     };
 
-    if (parsed_args.options.help) |help| if (help) Cli.printHelpAndExit();
-    if (parsed_args.options.version) |v| if (v) Cli.printVersionAndExit();
+    if (params.options.help) |help| if (help) Cli.printHelpAndExit();
+    if (params.options.version) |v| if (v) Cli.printVersionAndExit();
 }
 
 const std = @import("std");
