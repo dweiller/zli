@@ -70,6 +70,7 @@ pub fn CliCommand(
                     .longest_arg_len = longest_arg_name,
                     .args = options.parameters,
                 },
+                options.include_defaults,
             ) catch std.process.exit(1);
             std.process.exit(0);
         }
@@ -92,6 +93,7 @@ fn printHelp(
         longest_arg_len: comptime_int,
         args: []const Arg,
     },
+    include_defaults: bool,
 ) !void {
     try writer.print("{s} {}\n", .{ options.name, options.version });
     if (options.help_message.len > 0)
@@ -104,6 +106,7 @@ fn printHelp(
         40,
         60,
         options.args,
+        include_defaults,
     );
 }
 
@@ -131,6 +134,7 @@ pub fn writeOptions(
     min_width: usize,
     max_col_width: usize,
     comptime spec: []const Arg,
+    include_defaults: bool,
 ) !void {
     const long_fmt = std.fmt.comptimePrint("{{s: <{d}}}", .{longest});
 
@@ -166,6 +170,17 @@ pub fn writeOptions(
             else
                 try writer.print(option_fmt_long ++ "{s}\n", .{ n.full, arg.short_help }),
             .short => |c| try writer.print(option_fmt_short ++ "{s}\n", .{ c, arg.short_help }),
+        }
+    }
+    if (include_defaults) {
+        if (max_width) |width| {
+            try writer.print(option_fmt_long, .{"version"});
+            try writeAlignedTo(writer, help_padding, width, "print version information");
+            try writer.print(option_fmt_long, .{"help"});
+            try writeAlignedTo(writer, help_padding, width, "print help information");
+        } else {
+            try writer.print(option_fmt_long ++ "{s}\n", .{ "version", "print version information" });
+            try writer.print(option_fmt_long ++ "{s}\n", .{ "help", "print this help message" });
         }
     }
 }
