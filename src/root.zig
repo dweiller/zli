@@ -350,7 +350,7 @@ pub fn parseWithArgs(
                 break;
             }
         } else {
-            if (arg[0] == '-') return .{
+            if (arg[0] == '-' and arg.len > 1) return .{
                 .err = .{
                     .arg_name = "",
                     .string = arg,
