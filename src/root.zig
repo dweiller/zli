@@ -1,7 +1,8 @@
 const zli = @This();
 
 pub const CliOptions = struct {
-    include_defaults: bool = true,
+    include_help: bool = true,
+    include_version: bool = true,
     parameters: []const Arg = &.{},
     help_message: []const u8 = &.{},
 };
@@ -11,14 +12,15 @@ pub fn CliCommand(
     comptime version: std.SemanticVersion,
     comptime options: CliOptions,
 ) type {
-    checkNameClash(options.parameters, options.include_defaults);
+    checkNameClash(options.parameters, options.include_help, options.include_version);
 
     return struct {
-        pub const args = if (options.include_defaults)
-            argsWithDefaults(options.parameters)
-        else
-            options.parameters;
-        pub const ParsedResult = ParseResult(args);
+        const args = argsWithDefaults(
+            options.parameters,
+            options.include_help,
+            options.include_version,
+        );
+        pub const ParsedResult = ParseResult(options.parameters);
         pub const Params = ParsedResult.Params;
 
         const longest_arg_name = length: {
@@ -33,11 +35,14 @@ pub fn CliCommand(
         };
 
         pub fn parse(allocator: std.mem.Allocator) Allocator.Error!ParsedResult {
-            return zli.parse(allocator, args);
+            var args_iter = try std.process.argsWithAllocator(allocator);
+            defer args_iter.deinit();
+            assert(args_iter.skip());
+            return @This().parseWithArgs(allocator, &args_iter);
         }
 
         pub fn parseOrExit(allocator: std.mem.Allocator, status: u8) ParsedResult {
-            return zli.parse(allocator, args) catch |err| {
+            return @This().parse(allocator) catch |err| {
                 std.log.err("{s}", .{@errorName(err)});
                 if (@errorReturnTrace()) |trace| {
                     std.debug.dumpStackTrace(trace.*);
@@ -47,38 +52,56 @@ pub fn CliCommand(
         }
 
         pub fn parseWithArgs(
-            allocator: Allocator,
+            allocator: std.mem.Allocator,
             args_iter: *ArgIterator,
         ) Allocator.Error!ParsedResult {
-            return zli.parseWithArgs(allocator, args, args_iter);
-        }
+            switch (try zli.parseWithArgs(allocator, args, args_iter)) {
+                .ok => |parsed_args| {
+                    if (options.include_help) {
+                        if (parsed_args.options.help) |v| if (v) {
+                            const stdout = std.io.getStdOut();
+                            const columns: ?usize = if (stdout.isTty())
+                                if (getTerminalSize()) |size|
+                                    size.columns
+                                else
+                                    null
+                            else
+                                null;
 
-        pub fn printHelpAndExit() noreturn {
-            const stdout = std.io.getStdOut();
-            const columns: ?usize = if (stdout.isTty())
-                (getTerminalSize() catch std.process.exit(1)).columns
-            else
-                null;
+                            zli.printHelp(
+                                stdout.writer(),
+                                columns,
+                                .{
+                                    .name = name,
+                                    .version = version,
+                                    .help_message = options.help_message,
+                                    .longest_arg_len = longest_arg_name,
+                                    .args = options.parameters,
+                                },
+                                options.include_help,
+                                options.include_version,
+                            ) catch std.process.exit(1);
+                            std.process.exit(0);
+                        };
+                    }
 
-            printHelp(
-                stdout.writer(),
-                columns,
-                .{
-                    .name = name,
-                    .version = version,
-                    .help_message = options.help_message,
-                    .longest_arg_len = longest_arg_name,
-                    .args = options.parameters,
+                    if (options.include_version) {
+                        if (parsed_args.options.version) |v| if (v) {
+                            const writer = std.io.getStdOut().writer();
+                            writeVersion(writer, name, version, "") catch std.process.exit(1);
+                            std.process.exit(0);
+                        };
+                    }
+
+                    var opts: Options(options.parameters) = .{};
+                    inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {
+                        @field(opts, field.name) = @field(parsed_args.options, field.name);
+                    }
+
+                    return .{ .ok = .{ .options = opts, .positional = parsed_args.positional } };
                 },
-                options.include_defaults,
-            ) catch std.process.exit(1);
-            std.process.exit(0);
-        }
-
-        pub fn printVersionAndExit() noreturn {
-            const writer = std.io.getStdOut().writer();
-            writeVersion(writer, name, version, "") catch std.process.exit(1);
-            std.process.exit(0);
+                .err => |err| return .{ .err = err },
+            }
         }
     };
 }
@@ -93,7 +116,8 @@ fn printHelp(
         longest_arg_len: comptime_int,
         args: []const Arg,
     },
-    include_defaults: bool,
+    include_help: bool,
+    include_version: bool,
 ) !void {
     try writer.print("{s} {}\n", .{ options.name, options.version });
     if (options.help_message.len > 0)
@@ -106,25 +130,31 @@ fn printHelp(
         40,
         60,
         options.args,
-        include_defaults,
+        include_help,
+        include_version,
     );
 }
 
-const default_args = [_]Arg{
-    .{
-        .name = .{ .long = .{ .full = "help" } },
-        .short_help = "Print this help message",
-        .type = bool,
-    },
-    .{
-        .name = .{ .long = .{ .full = "version" } },
-        .short_help = "Print version information",
-        .type = bool,
-    },
+const default_help_arg: Arg = .{
+    .name = .{ .long = .{ .full = "help" } },
+    .short_help = "Print this help message",
+    .type = bool,
 };
 
-pub fn argsWithDefaults(comptime args: []const Arg) []const Arg {
-    return args ++ default_args;
+const default_version_arg: Arg = .{
+    .name = .{ .long = .{ .full = "version" } },
+    .short_help = "Print version information",
+    .type = bool,
+};
+
+pub fn argsWithDefaults(
+    comptime args: []const Arg,
+    comptime include_help: bool,
+    comptime include_version: bool,
+) []const Arg {
+    return args ++
+        (if (include_help) .{default_help_arg} else .{}) ++
+        (if (include_version) .{default_version_arg} else .{});
 }
 
 pub fn writeOptions(
@@ -134,7 +164,8 @@ pub fn writeOptions(
     min_width: usize,
     max_col_width: usize,
     comptime spec: []const Arg,
-    include_defaults: bool,
+    include_help: bool,
+    include_version: bool,
 ) !void {
     const long_fmt = std.fmt.comptimePrint("{{s: <{d}}}", .{longest});
 
@@ -172,21 +203,26 @@ pub fn writeOptions(
             .short => |c| try writer.print(option_fmt_short ++ "{s}\n", .{ c, arg.short_help }),
         }
     }
-    if (include_defaults) {
+    if (include_version) {
         if (max_width) |width| {
             try writer.print(option_fmt_long, .{"version"});
             try writeAlignedTo(writer, help_padding, width, "print version information");
+        } else {
+            try writer.print(option_fmt_long ++ "{s}\n", .{ "version", "print version information" });
+        }
+    }
+    if (include_help) {
+        if (max_width) |width| {
             try writer.print(option_fmt_long, .{"help"});
             try writeAlignedTo(writer, help_padding, width, "print help information");
         } else {
-            try writer.print(option_fmt_long ++ "{s}\n", .{ "version", "print version information" });
             try writer.print(option_fmt_long ++ "{s}\n", .{ "help", "print this help message" });
         }
     }
 }
 
 fn writeAlignedTo(writer: anytype, padding: usize, end: usize, bytes: []const u8) !void {
-    std.debug.assert(end > padding);
+    assert(end > padding);
 
     const width = end - padding;
 
@@ -229,7 +265,7 @@ pub fn writeVersion(
 pub fn ParseResult(comptime spec: []const Arg) type {
     return union(enum) {
         ok: Params,
-        err: Err,
+        err: ParseErr,
 
         pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
             switch (self) {
@@ -255,46 +291,46 @@ pub fn ParseResult(comptime spec: []const Arg) type {
                 allocator.free(self.positional);
             }
         };
-
-        pub const Err = struct {
-            arg_name: []const u8,
-            string: []const u8,
-            err: Error,
-
-            pub fn format(
-                value: Err,
-                comptime fmt: []const u8,
-                options: std.fmt.FormatOptions,
-                writer: anytype,
-            ) !void {
-                _ = fmt;
-                _ = options;
-                switch (value.err) {
-                    error.Missing => try writer.print(
-                        "missing value for parameter {s}",
-                        .{value.arg_name},
-                    ),
-                    error.BadValue => try writer.print(
-                        "invalid value for parameter {s}",
-                        .{value.arg_name},
-                    ),
-                    error.Unrecognized => try writer.print(
-                        "unrecognized parameter '{s}'",
-                        .{value.string},
-                    ),
-                    error.InvalidCharacter => try writer.print(
-                        "value '{s}' for parameter {s} contains an invalid character",
-                        .{ value.string, value.arg_name },
-                    ),
-                    error.Overflow => try writer.print(
-                        "value '{s}' for parameter {s} is out of bounds (try something closer to 0)",
-                        .{ value.string, value.arg_name },
-                    ),
-                }
-            }
-        };
     };
 }
+
+pub const ParseErr = struct {
+    arg_name: []const u8,
+    string: []const u8,
+    err: Error,
+
+    pub fn format(
+        value: ParseErr,
+        comptime fmt: []const u8,
+        options: std.fmt.FormatOptions,
+        writer: anytype,
+    ) !void {
+        _ = fmt;
+        _ = options;
+        switch (value.err) {
+            error.Missing => try writer.print(
+                "missing value for parameter {s}",
+                .{value.arg_name},
+            ),
+            error.BadValue => try writer.print(
+                "invalid value for parameter {s}",
+                .{value.arg_name},
+            ),
+            error.Unrecognized => try writer.print(
+                "unrecognized parameter '{s}'",
+                .{value.string},
+            ),
+            error.InvalidCharacter => try writer.print(
+                "value '{s}' for parameter {s} contains an invalid character",
+                .{ value.string, value.arg_name },
+            ),
+            error.Overflow => try writer.print(
+                "value '{s}' for parameter {s} is out of bounds (try something closer to 0)",
+                .{ value.string, value.arg_name },
+            ),
+        }
+    }
+};
 
 pub const Error = error{ Missing, BadValue, Unrecognized } ||
     std.fmt.ParseIntError || std.fmt.ParseFloatError;
@@ -304,7 +340,7 @@ pub fn parseWithArgs(
     comptime args: []const Arg,
     args_iter: *std.process.ArgIterator,
 ) !ParseResult(args) {
-    var options = Options(args){};
+    var options: Options(args) = .{};
     var positional = std.ArrayList([:0]u8).init(allocator);
 
     while (args_iter.next()) |arg| {
@@ -391,7 +427,7 @@ pub fn parse(
 ) Allocator.Error!ParseResult(args) {
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
-    _ = args_iter.skip();
+    assert(args_iter.skip());
     return parseWithArgs(allocator, args, &args_iter);
 }
 
@@ -487,7 +523,11 @@ pub const Arg = struct {
     }
 };
 
-fn checkNameClash(comptime args: []const Arg, comptime check_defaults: bool) void {
+fn checkNameClash(
+    comptime args: []const Arg,
+    comptime check_help: bool,
+    comptime check_version: bool,
+) void {
     for (args, 0..) |arg, i| {
         if (arg.name == .long and arg.name.long.full.len == 1) {
             @compileError("A long argument's full name must have length greater than 1");
@@ -507,12 +547,24 @@ fn checkNameClash(comptime args: []const Arg, comptime check_defaults: bool) voi
                 @compileError(std.fmt.comptimePrint("arguments {d} and {d} have a name clash", .{ i, j }));
             }
         }
-        if (check_defaults)
-            for (default_args) |t| {
-                if (arg.name.hasClash(t.name)) {
-                    @compileError(std.fmt.comptimePrint("argument {s} has a name clash with default parameter {s}", .{ arg.fieldName(), t.fieldName() }));
-                }
-            };
+
+        if (check_help) {
+            if (arg.name.hasClash(default_help_arg.name)) {
+                @compileError(std.fmt.comptimePrint(
+                    "argument {s} has a name clash with default parameter {s}",
+                    .{ arg.fieldName(), default_help_arg.fieldName() },
+                ));
+            }
+        }
+
+        if (check_version) {
+            if (arg.name.hasClash(default_version_arg.name)) {
+                @compileError(std.fmt.comptimePrint(
+                    "argument {s} has a name clash with default parameter {s}",
+                    .{ arg.fieldName(), default_version_arg.fieldName() },
+                ));
+            }
+        }
     }
 }
 
@@ -545,6 +597,7 @@ fn failCompilationBadType(comptime T: type) noreturn {
 }
 
 const std = @import("std");
+const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
 const ArgIterator = std.process.ArgIterator;
 

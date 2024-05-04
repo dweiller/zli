@@ -44,8 +44,7 @@ pub fn main() void {
         },
     };
 
-    if (params.options.help) |help| if (help) Cli.printHelpAndExit();
-    if (params.options.version) |v| if (v) Cli.printVersionAndExit();
+    _ = params;
 }
 
 const std = @import("std");

@@ -3,7 +3,7 @@ const Size = struct {
     rows: u16,
 };
 
-pub fn getTerminalSize() !Size {
+pub fn getTerminalSize() ?Size {
     const builtin = @import("builtin");
     switch (builtin.os.tag) {
         .linux => return linuxGetTerminalSize(),
@@ -12,20 +12,20 @@ pub fn getTerminalSize() !Size {
     }
 }
 
-fn linuxGetTerminalSize() !Size {
+fn linuxGetTerminalSize() ?Size {
     var wsz: std.os.linux.winsize = undefined;
     const rc = std.os.linux.ioctl(std.io.getStdOut().handle, std.os.linux.T.IOCGWINSZ, @intFromPtr(&wsz));
     switch (std.os.linux.E.init(rc)) {
         .SUCCESS => {},
-        else => return error.GetTerminalSizeFailed,
+        else => return null,
     }
     return .{ .columns = wsz.ws_col, .rows = wsz.ws_row };
 }
 
-fn windowsGetTerminalSize() !Size {
+fn windowsGetTerminalSize() ?Size {
     var info: std.os.windows.CONSOLE_SCREEN_BUFFER_INFO = undefined;
     if (std.os.windows.kernel32.GetConsoleScreenBufferInfo(std.io.getStdOut().handle, &info) != std.os.windows.TRUE) {
-        return error.GetTerminalSizeFailed;
+        return null;
     }
     return .{
         .columns = @intCast(info.srWindow.Right - info.srWindow.Left + 1),
