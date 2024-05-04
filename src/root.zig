@@ -34,14 +34,14 @@ pub fn CliCommand(
             break :length length;
         };
 
-        pub fn parse(allocator: std.mem.Allocator) Allocator.Error!ParsedResult {
+        pub fn parse(allocator: Allocator) Allocator.Error!ParsedResult {
             var args_iter = try std.process.argsWithAllocator(allocator);
             defer args_iter.deinit();
             assert(args_iter.skip());
             return @This().parseWithArgs(allocator, &args_iter);
         }
 
-        pub fn parseOrExit(allocator: std.mem.Allocator, status: u8) ParsedResult {
+        pub fn parseOrExit(allocator: Allocator, status: u8) ParsedResult {
             return @This().parse(allocator) catch |err| {
                 std.log.err("{s}", .{@errorName(err)});
                 if (@errorReturnTrace()) |trace| {
@@ -52,7 +52,7 @@ pub fn CliCommand(
         }
 
         pub fn parseWithArgs(
-            allocator: std.mem.Allocator,
+            allocator: Allocator,
             args_iter: *ArgIterator,
         ) Allocator.Error!ParsedResult {
             switch (try zli.parseWithArgs(allocator, args, args_iter)) {
@@ -267,7 +267,7 @@ pub fn ParseResult(comptime spec: []const Arg) type {
         ok: Params,
         err: ParseErr,
 
-        pub fn deinit(self: @This(), allocator: std.mem.Allocator) void {
+        pub fn deinit(self: @This(), allocator: Allocator) void {
             switch (self) {
                 .ok => |ok| ok.deinit(allocator),
                 .err => |err| allocator.free(err.string),
@@ -278,7 +278,7 @@ pub fn ParseResult(comptime spec: []const Arg) type {
             options: Options(spec),
             positional: []const [:0]const u8,
 
-            pub fn deinit(self: Params, allocator: std.mem.Allocator) void {
+            pub fn deinit(self: Params, allocator: Allocator) void {
                 inline for (std.meta.fields(@TypeOf(self.options))) |field| {
                     const Child = @typeInfo(field.type).Optional.child;
                     if (@typeInfo(Child) == .Pointer) {
@@ -333,7 +333,7 @@ pub const Error = error{ Missing, BadValue, Unrecognized } ||
     std.fmt.ParseIntError || std.fmt.ParseFloatError;
 
 pub fn parseWithArgs(
-    allocator: std.mem.Allocator,
+    allocator: Allocator,
     comptime args: []const Arg,
     args_iter: *std.process.ArgIterator,
 ) !ParseResult(args) {
@@ -418,10 +418,7 @@ pub fn parseWithArgs(
     } };
 }
 
-pub fn parse(
-    allocator: std.mem.Allocator,
-    comptime args: []const Arg,
-) Allocator.Error!ParseResult(args) {
+pub fn parse(allocator: Allocator, comptime args: []const Arg) Allocator.Error!ParseResult(args) {
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     assert(args_iter.skip());
