@@ -58,7 +58,7 @@ pub fn CliCommand(
             switch (try zli.parseWithArgs(allocator, args, args_iter)) {
                 .ok => |parsed_args| {
                     if (options.include_help) {
-                        if (parsed_args.options.help) |v| if (v) {
+                        if (parsed_args.options.help) {
                             const stdout = std.io.getStdOut();
                             const columns: ?usize = if (stdout.isTty())
                                 if (getTerminalSize()) |size|
@@ -82,15 +82,15 @@ pub fn CliCommand(
                                 options.include_version,
                             ) catch std.process.exit(1);
                             std.process.exit(0);
-                        };
+                        }
                     }
 
                     if (options.include_version) {
-                        if (parsed_args.options.version) |v| if (v) {
+                        if (parsed_args.options.version) {
                             const writer = std.io.getStdOut().writer();
                             writeVersion(writer, name, version, "") catch std.process.exit(1);
                             std.process.exit(0);
-                        };
+                        }
                     }
 
                     var opts: Options(options.parameters) = .{};
@@ -565,10 +565,11 @@ fn checkNameClash(
 pub fn Options(comptime args: []const Arg) type {
     var fields: [args.len]std.builtin.Type.StructField = undefined;
     for (&fields, args) |*f, s| {
+        const is_bool = s.type == bool;
         f.* = .{
             .name = s.fieldName(),
-            .type = ?s.type,
-            .default_value = &@as(?s.type, null),
+            .type = if (is_bool) bool else ?s.type,
+            .default_value = if (is_bool) &false else &@as(?s.type, null),
             .is_comptime = false,
             .alignment = @alignOf(?s.type),
         };
