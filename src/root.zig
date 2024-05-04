@@ -299,33 +299,30 @@ pub const ParseErr = struct {
     string: []const u8,
     err: Error,
 
-    pub fn format(
-        value: ParseErr,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn renderToStdErr(value: ParseErr) void {
+        value.render(std.io.getStdErr().writer()) catch {};
+    }
+
+    pub fn render(value: ParseErr, writer: anytype) !void {
         switch (value.err) {
             error.Missing => try writer.print(
-                "missing value for parameter {s}",
+                "missing value for parameter {s}\n",
                 .{value.arg_name},
             ),
             error.BadValue => try writer.print(
-                "invalid value for parameter {s}",
+                "invalid value for parameter {s}\n",
                 .{value.arg_name},
             ),
             error.Unrecognized => try writer.print(
-                "unrecognized parameter '{s}'",
+                "unrecognized parameter '{s}'\n",
                 .{value.string},
             ),
             error.InvalidCharacter => try writer.print(
-                "value '{s}' for parameter {s} contains an invalid character",
+                "value '{s}' for parameter {s} contains an invalid character\n",
                 .{ value.string, value.arg_name },
             ),
             error.Overflow => try writer.print(
-                "value '{s}' for parameter {s} is out of bounds (try something closer to 0)",
+                "value '{s}' for parameter {s} is out of bounds (try something closer to 0)\n",
                 .{ value.string, value.arg_name },
             ),
         }

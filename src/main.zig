@@ -39,7 +39,7 @@ pub fn main() void {
     const params = switch (parse_result) {
         .ok => |ok| ok,
         .err => |err| {
-            std.debug.print("{}\n", .{err});
+            err.renderToStdErr();
             std.process.exit(1);
         },
     };
