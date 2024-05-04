@@ -350,8 +350,7 @@ pub fn parseWithArgs(
                 null;
 
             if (match != .no) {
-                const field_name = std.fmt.comptimePrint("{s}", .{s.name});
-                @field(options, field_name) = switch (@typeInfo(s.type)) {
+                @field(options, s.fieldName()) = switch (@typeInfo(s.type)) {
                     .Int, .Float, .Pointer, .Enum => f: {
                         const value = embeded_value orelse args_iter.next() orelse return .{
                             .err = .{
@@ -428,20 +427,6 @@ pub fn parse(allocator: Allocator, comptime args: []const Arg) Allocator.Error!P
 pub const ArgName = union(enum) {
     long: struct { full: [:0]const u8, short: ?u8 = null },
     short: u8,
-
-    pub fn format(
-        value: ArgName,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        switch (value) {
-            .long => |n| try writer.writeAll(n.full),
-            .short => |n| try writer.writeByte(n),
-        }
-    }
 
     pub const MatchResult = enum {
         yes,
