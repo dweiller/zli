@@ -55,17 +55,9 @@ which can you can see by running `zig build run -- --help`.
 
 To use zli in a project you can use the Zig package manager by using `https://github.com/dweiller/zli/archive/[[COMMIT-SHA]].tar.gz` as the dependency URL and then grabbing the 'zli' module, e.g.:
 
-`build.zig.zon`:
-```
-.{
-    .name = "your-project-name",
-    .version = '0.1.0',
-    .dependencies = .{
-        .zli = .{
-            .url = "https://github.com/dweiller/zli/archive/[[commit-SHA]].tar.gz",
-        },
-    }
-}
+add zli to your `build.zig.zon`:
+```sh
+zig fetch --save=zli https://github.com/dweiller/zli/archive/[[COMMIT-SHA]].tar.gz
 ```
 
 `build.zig`:
