@@ -1,38 +1,21 @@
 const zli = @This();
 
 pub const CliOptions = struct {
-    include_help: bool = true,
-    include_version: bool = true,
     parameters: []const Arg = &.{},
     help_message: []const u8 = &.{},
+    version: ?std.SemanticVersion = null,
 };
 
 pub fn CliCommand(
     comptime name: []const u8,
-    comptime version: std.SemanticVersion,
     comptime options: CliOptions,
 ) type {
-    checkNameClash(options.parameters, options.include_help, options.include_version);
+    const include_version = options.version != null;
+    checkNameClash(options.parameters, include_version);
 
     return struct {
-        const args = argsWithDefaults(
-            options.parameters,
-            options.include_help,
-            options.include_version,
-        );
         pub const ParsedResult = ParseResult(options.parameters);
         pub const Params = ParsedResult.Params;
-
-        const longest_arg_name = length: {
-            var length = 0;
-            for (args) |arg| {
-                const arg_name = arg.fieldName();
-                if (arg_name.len > length) {
-                    length = arg_name.len;
-                }
-            }
-            break :length length;
-        };
 
         pub fn parse(allocator: Allocator) Allocator.Error!ParsedResult {
             var args_iter = try std.process.argsWithAllocator(allocator);
@@ -55,37 +38,24 @@ pub fn CliCommand(
             allocator: Allocator,
             args_iter: *ArgIterator,
         ) Allocator.Error!ParsedResult {
+            const args = argsWithDefaults(
+                options.parameters,
+                true,
+                include_version,
+            );
+
             switch (try zli.parseWithArgs(allocator, args, args_iter)) {
                 .ok => |parsed_args| {
-                    if (options.include_help) {
-                        if (parsed_args.options.help) {
-                            const stdout = std.io.getStdOut();
-                            const columns: ?usize = if (stdout.isTty())
-                                if (getTerminalSize()) |size|
-                                    size.columns
-                                else
-                                    null
-                            else
-                                null;
-
-                            zli.printHelp(
-                                stdout.writer(),
-                                columns,
-                                .{
-                                    .name = name,
-                                    .version = version,
-                                    .help_message = options.help_message,
-                                    .longest_arg_len = longest_arg_name,
-                                    .args = options.parameters,
-                                },
-                                options.include_help,
-                                options.include_version,
-                            ) catch std.process.exit(1);
-                            std.process.exit(0);
-                        }
+                    if (parsed_args.options.help) {
+                        printHelpToStdout(
+                            name,
+                            options,
+                            true,
+                        ) catch std.process.exit(1);
+                        std.process.exit(0);
                     }
 
-                    if (options.include_version) {
+                    if (options.version) |version| {
                         if (parsed_args.options.version) {
                             const writer = std.io.getStdOut().writer();
                             writeVersion(writer, name, version, "") catch std.process.exit(1);
@@ -109,41 +79,59 @@ pub fn CliCommand(
 fn printHelp(
     writer: anytype,
     columns: ?usize,
-    comptime options: struct {
-        name: []const u8,
-        version: std.SemanticVersion,
-        help_message: []const u8,
-        longest_arg_len: comptime_int,
-        args: []const Arg,
-    },
-    include_help: bool,
-    include_version: bool,
+    name: []const u8,
+    comptime options: CliOptions,
+    comptime include_help: bool,
 ) !void {
-    try writer.print("{s} {}\n", .{ options.name, options.version });
+    if (options.version) |version| {
+        try writer.print("{s} {}\n", .{ name, version });
+    } else {
+        try writer.print("{s}\n", .{name});
+    }
     if (options.help_message.len > 0)
         try writer.writerAll(options.help_message);
     try writer.writeAll("\nOptions:\n\n");
     try writeOptions(
         writer,
-        options.longest_arg_len,
         columns,
         40,
         60,
-        options.args,
+        argsWithDefaults(options.parameters, include_help, options.version != null),
+    );
+}
+
+pub fn printHelpToStdout(
+    name: []const u8,
+    comptime options: CliOptions,
+    comptime include_help: bool,
+) std.fs.File.Writer.Error!void {
+    const stdout = std.io.getStdOut();
+    const columns: ?usize = if (stdout.isTty())
+        if (getTerminalSize()) |size|
+            size.columns
+        else
+            null
+    else
+        null;
+
+    try printHelp(
+        stdout.writer(),
+        columns,
+        name,
+        options,
         include_help,
-        include_version,
     );
 }
 
 const default_help_arg: Arg = .{
     .name = .{ .long = .{ .full = "help" } },
-    .short_help = "Print this help message",
+    .short_help = "print help information",
     .type = bool,
 };
 
 const default_version_arg: Arg = .{
     .name = .{ .long = .{ .full = "version" } },
-    .short_help = "Print version information",
+    .short_help = "print version information",
     .type = bool,
 };
 
@@ -159,14 +147,22 @@ pub fn argsWithDefaults(
 
 pub fn writeOptions(
     writer: anytype,
-    comptime longest: comptime_int,
     columns: ?usize,
     min_width: usize,
     max_col_width: usize,
     comptime spec: []const Arg,
-    include_help: bool,
-    include_version: bool,
 ) !void {
+    const longest = comptime length: {
+        var length = 0;
+        for (spec) |arg| {
+            const arg_name = arg.fieldName();
+            if (arg_name.len > length) {
+                length = arg_name.len;
+            }
+        }
+        break :length length;
+    };
+
     const long_fmt = std.fmt.comptimePrint("{{s: <{d}}}", .{longest});
 
     const separator = " " ** 8;
@@ -201,22 +197,6 @@ pub fn writeOptions(
             else
                 try writer.print(option_fmt_long ++ "{s}\n", .{ n.full, arg.short_help }),
             .short => |c| try writer.print(option_fmt_short ++ "{s}\n", .{ c, arg.short_help }),
-        }
-    }
-    if (include_version) {
-        if (max_width) |width| {
-            try writer.print(option_fmt_long, .{"version"});
-            try writeAlignedTo(writer, help_padding, width, "print version information");
-        } else {
-            try writer.print(option_fmt_long ++ "{s}\n", .{ "version", "print version information" });
-        }
-    }
-    if (include_help) {
-        if (max_width) |width| {
-            try writer.print(option_fmt_long, .{"help"});
-            try writeAlignedTo(writer, help_padding, width, "print help information");
-        } else {
-            try writer.print(option_fmt_long ++ "{s}\n", .{ "help", "print this help message" });
         }
     }
 }
@@ -502,11 +482,7 @@ pub const Arg = struct {
     }
 };
 
-fn checkNameClash(
-    comptime args: []const Arg,
-    comptime check_help: bool,
-    comptime check_version: bool,
-) void {
+fn checkNameClash(comptime args: []const Arg, comptime check_version: bool) void {
     for (args, 0..) |arg, i| {
         if (arg.name == .long and arg.name.long.full.len == 1) {
             @compileError("A long argument's full name must have length greater than 1");
@@ -527,13 +503,11 @@ fn checkNameClash(
             }
         }
 
-        if (check_help) {
-            if (arg.name.hasClash(default_help_arg.name)) {
-                @compileError(std.fmt.comptimePrint(
-                    "argument {s} has a name clash with default parameter {s}",
-                    .{ arg.fieldName(), default_help_arg.fieldName() },
-                ));
-            }
+        if (arg.name.hasClash(default_help_arg.name)) {
+            @compileError(std.fmt.comptimePrint(
+                "argument {s} has a name clash with default parameter {s}",
+                .{ arg.fieldName(), default_help_arg.fieldName() },
+            ));
         }
 
         if (check_version) {
@@ -587,7 +561,9 @@ test {
     _ = std.testing.refAllDecls(@This());
     _ = std.testing.refAllDecls(CliCommand(
         "test",
-        try std.SemanticVersion.parse("0.0.0"),
-        .{ .parameters = &@import("main.zig").arg_spec },
+        .{
+            .parameters = &@import("main.zig").arg_spec,
+            .version = try std.SemanticVersion.parse("0.0.0"),
+        },
     ));
 }

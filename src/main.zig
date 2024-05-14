@@ -26,7 +26,7 @@ const version = std.SemanticVersion{
     .patch = 0,
 };
 
-const Cli = zli.CliCommand("zli-example-app", version, .{ .parameters = &arg_spec });
+const Cli = zli.CliCommand("zli-example-app", .{ .parameters = &arg_spec, .version = version });
 
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
