@@ -25,6 +25,16 @@ const arg_spec = [_]zli.Arg{
         .name = .{ .long = .{ .full = "complicated", .short = 'k' } },
         .short_help = "This option is very complicated and the 'short' help message included here is so long that we want some nice line breaking to occur",
     },
+    .{
+        .name = .{ .long = .{ .full = "flag-1", .short = '1' } },
+        .short_help = "just a flag",
+        .type = bool,
+    },
+    .{
+        .name = .{ .short = '2' },
+        .short_help = "another flag",
+        .type = bool,
+    },
 };
 
 const version = std.SemanticVersion{
@@ -48,6 +58,8 @@ Options:
   -k, --complicated              This option is very complicated and the 'short' help message
                                    included here is so long that we want some nice line
                                    breaking to occur
+  -1, --flag-1                   just a flag
+  -2                             another flag
       --help                     Print this help message
       --version                  Print version information
 ```
