@@ -32,3 +32,8 @@ jobs:
 
       - name: Run tests
         run: zig build test
+
+      - name: Run example
+        run: |
+          zig build run -- --help
+          zig build run -- -12f hello.txt
