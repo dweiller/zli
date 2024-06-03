@@ -260,6 +260,7 @@ pub fn ParseResult(comptime spec: []const Arg) type {
 
             pub fn deinit(self: Params, allocator: Allocator) void {
                 inline for (std.meta.fields(@TypeOf(self.options))) |field| {
+                    if (field.type == bool) continue;
                     const Child = @typeInfo(field.type).Optional.child;
                     if (@typeInfo(Child) == .Pointer) {
                         if (@field(self.options, field.name)) |slice| {
