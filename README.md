@@ -2,6 +2,20 @@
 
 zli is a CLI argument parsing module for Zig. The aim is to provide CLI parameters in a simple, declarative way and have zli parse them as well as generate `--help` and `--version` flags and usage error messages.
 
+## features
+
+  - [x] short options
+    + boolean short options be be given in clusters e.g. `ls -lhF`
+    + the last short option in a cluster may take an argument (i.e. have type other than `bool`)
+      as the next command line word, e.g. `tar -xf file.tar`
+  - [x] long options
+    + arguments to long options may be the next command line word or separated from the option by an
+      equals sign
+  - [x] automatic handling of `--help` and `--version` options
+  - [x] typed argument parsing
+    + supports booleans, floats, integers, enums, `[]u8` and `[:s]u8` (for some sentinel `s`)
+  - [ ] git-style subcommands
+
 ## usage
 A usage example is given by `src/main.zig`. CLI parameters are declared like so:
 ```zig
