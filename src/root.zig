@@ -298,6 +298,13 @@ pub const ParseErr = struct {
                 "unrecognized parameter '{s}'\n",
                 .{value.string},
             ),
+            error.NotLastShort => try writer.print(
+                \\invalid concatenation of short options: {s}
+                \\when given as a short option, parameter {s} must appear last in a concatenation of short options
+                \\
+            ,
+                .{ value.string, value.arg_name },
+            ),
             error.InvalidCharacter => try writer.print(
                 "value '{s}' for parameter {s} contains an invalid character\n",
                 .{ value.string, value.arg_name },
@@ -310,7 +317,7 @@ pub const ParseErr = struct {
     }
 };
 
-pub const Error = error{ Missing, BadValue, Unrecognized } ||
+pub const Error = error{ Missing, BadValue, Unrecognized, NotLastShort } ||
     std.fmt.ParseIntError || std.fmt.ParseFloatError;
 
 pub fn parseWithArgs(
@@ -323,86 +330,130 @@ pub fn parseWithArgs(
 
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) break;
-        inline for (args) |s| {
-            const match = s.name.matches(arg);
-            const embeded_value = if (s.name == .long and match == .long_with_eql)
-                arg[2 + s.name.long.full.len + 1 ..]
-            else
-                null;
 
-            if (match != .no) {
-                @field(options, s.fieldName()) = switch (@typeInfo(s.type)) {
-                    .Int, .Float, .Pointer, .Enum => f: {
-                        const value = embeded_value orelse args_iter.next() orelse return .{
-                            .err = .{
-                                .arg_name = s.paramName(),
-                                .string = "",
-                                .err = Error.Missing,
-                            },
-                        };
-                        switch (@typeInfo(s.type)) {
-                            .Int => break :f std.fmt.parseInt(s.type, value, 0) catch |err| return .{
-                                .err = .{
-                                    .arg_name = s.paramName(),
-                                    .string = try allocator.dupe(u8, value),
-                                    .err = err,
-                                },
-                            },
-                            .Float => break :f std.fmt.parseFloat(s.type, value) catch |err| return .{
-                                .err = .{
-                                    .arg_name = s.paramName(),
-                                    .string = try allocator.dupe(u8, value),
-                                    .err = err,
-                                },
-                            },
-                            .Pointer => |p| switch (p.size) {
-                                .One, .Many, .C => failCompilationBadType(s.type),
-                                .Slice => {
-                                    if (p.child != u8) failCompilationBadType(s.type);
-                                    if (p.sentinel) |sentinel_ptr| {
-                                        const sentinel = @as(*align(1) const p.child, @ptrCast(sentinel_ptr)).*;
-                                        const copy = try allocator.alloc(p.child, value.len + 1);
-                                        @memcpy(copy[0..value.len], value);
-                                        copy[value.len] == sentinel;
-                                        break :f copy[0..value.len :sentinel];
-                                    }
-                                    break :f try allocator.dupe(u8, value);
-                                },
-                            },
-                            .Enum => break :f std.meta.stringToEnum(s.type, value) orelse return .{
-                                .err = .{
-                                    .arg_name = s.paramName(),
-                                    .string = try allocator.dupe(u8, value),
-                                    .err = Error.BadValue,
-                                },
-                            },
-                            else => unreachable,
+        if (arg.len > 1 and arg[0] == '-' and arg[1] != '-') {
+            inline for (args) |s| {
+                for (arg[1 .. arg.len - 1]) |arg_char| {
+                    if (s.type == bool) {
+                        if (s.name.matchesShort(arg_char)) {
+                            @field(options, s.fieldName()) = true;
                         }
+                    } else {
+                        if (s.name.matchesShort(arg_char)) {
+                            return .{
+                                .err = .{
+                                    .arg_name = s.paramName(),
+                                    .string = try allocator.dupe(u8, arg),
+                                    .err = Error.NotLastShort,
+                                },
+                            };
+                        }
+                    }
+                }
+                const arg_char = arg[arg.len - 1];
+                if (s.name.matchesShort(arg_char)) {
+                    switch (try parseArgValue(s, allocator, null, args_iter)) {
+                        .ok => |v| @field(options, s.fieldName()) = v,
+                        .err => |e| return .{ .err = e },
+                    }
+                }
+            }
+        } else if (arg.len > 2 and std.mem.startsWith(u8, arg, "--")) {
+            inline for (args) |s| {
+                if (s.name == .short) continue;
+                const match = s.name.matchesLong(arg[2..]);
+                switch (match) {
+                    .yes, .long_with_eql => |tag| {
+                        const embedded_value = if (tag == .long_with_eql)
+                            arg[2 + s.name.long.full.len + 1 ..]
+                        else
+                            null;
+
+                        switch (try parseArgValue(s, allocator, embedded_value, args_iter)) {
+                            .ok => |v| @field(options, s.fieldName()) = v,
+                            .err => |e| return .{ .err = e },
+                        }
+                        break;
                     },
-                    .Bool => true,
-                    else => failCompilationBadType(s.type),
-                };
-                break;
+                    .no => {},
+                }
             }
         } else {
-            if (arg[0] == '-' and arg.len > 1) return .{
-                .err = .{
-                    .arg_name = "",
-                    .string = arg,
-                    .err = Error.Unrecognized,
-                },
-            } else {
-                try positional.append(try allocator.dupeZ(u8, arg));
-            }
+            try positional.append(try allocator.dupeZ(u8, arg));
         }
     }
+
     while (args_iter.next()) |arg| {
         try positional.append(try allocator.dupeZ(u8, arg));
     }
+
     return .{ .ok = .{
         .options = options,
         .positional = try positional.toOwnedSlice(),
     } };
+}
+
+fn parseArgValue(
+    comptime s: Arg,
+    allocator: Allocator,
+    value_opt: ?[]const u8,
+    args_iter: *std.process.ArgIterator,
+) !union(enum) {
+    ok: s.type,
+    err: ParseErr,
+} {
+    const v = switch (@typeInfo(s.type)) {
+        .Int, .Float, .Pointer, .Enum => v: {
+            const value = value_opt orelse args_iter.next() orelse return .{
+                .err = .{
+                    .arg_name = s.paramName(),
+                    .string = "",
+                    .err = Error.Missing,
+                },
+            };
+            break :v switch (@typeInfo(s.type)) {
+                .Int => std.fmt.parseInt(s.type, value, 0) catch |err| return .{
+                    .err = .{
+                        .arg_name = s.paramName(),
+                        .string = try allocator.dupe(u8, value),
+                        .err = err,
+                    },
+                },
+                .Float => std.fmt.parseFloat(s.type, value) catch |err| return .{
+                    .err = .{
+                        .arg_name = s.paramName(),
+                        .string = try allocator.dupe(u8, value),
+                        .err = err,
+                    },
+                },
+                .Pointer => |p| switch (p.size) {
+                    .One, .Many, .C => failCompilationBadType(s.type),
+                    .Slice => slice: {
+                        if (p.child != u8) failCompilationBadType(s.type);
+                        if (p.sentinel) |sentinel_ptr| {
+                            const sentinel = @as(*align(1) const p.child, @ptrCast(sentinel_ptr)).*;
+                            const copy = try allocator.alloc(p.child, value.len + 1);
+                            @memcpy(copy[0..value.len], value);
+                            copy[value.len] == sentinel;
+                            break :slice copy[0..value.len :sentinel];
+                        }
+                        break :slice try allocator.dupe(u8, value);
+                    },
+                },
+                .Enum => std.meta.stringToEnum(s.type, value) orelse return .{
+                    .err = .{
+                        .arg_name = s.paramName(),
+                        .string = try allocator.dupe(u8, value),
+                        .err = Error.BadValue,
+                    },
+                },
+                else => unreachable,
+            };
+        },
+        .Bool => true,
+        else => failCompilationBadType(s.type),
+    };
+    return .{ .ok = v };
 }
 
 pub fn parse(allocator: Allocator, comptime args: []const Arg) Allocator.Error!ParseResult(args) {

@@ -18,6 +18,16 @@ pub const arg_spec = [_]zli.Arg{
         .name = .{ .long = .{ .full = "complicated", .short = 'k' } },
         .short_help = "This option is very complicated and the 'short' help message included here is so long that we want some nice line breaking to occur",
     },
+    .{
+        .name = .{ .long = .{ .full = "flag-1", .short = '1' } },
+        .short_help = "just a flag",
+        .type = bool,
+    },
+    .{
+        .name = .{ .short = '2' },
+        .short_help = "another flag",
+        .type = bool,
+    },
 };
 
 const version = std.SemanticVersion{
@@ -44,7 +54,10 @@ pub fn main() void {
         },
     };
 
-    _ = params;
+    const stdout = std.io.getStdOut();
+    const writer = stdout.writer();
+
+    writer.print("parsed args: {}\n", .{params}) catch @panic("failed to write to stdout");
 }
 
 const std = @import("std");
