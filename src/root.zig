@@ -358,7 +358,14 @@ pub fn parseWithArgs(
                                 .One, .Many, .C => failCompilationBadType(s.type),
                                 .Slice => {
                                     if (p.child != u8) failCompilationBadType(s.type);
-                                    break :f try allocator.dupeZ(u8, value);
+                                    if (p.sentinel) |sentinel_ptr| {
+                                        const sentinel = @as(*align(1) const p.child, @ptrCast(sentinel_ptr)).*;
+                                        const copy = try allocator.alloc(p.child, value.len + 1);
+                                        @memcpy(copy[0..value.len], value);
+                                        copy[value.len] == sentinel;
+                                        break :f copy[0..value.len :sentinel];
+                                    }
+                                    break :f try allocator.dupe(u8, value);
                                 },
                             },
                             .Enum => break :f std.meta.stringToEnum(s.type, value) orelse return .{
