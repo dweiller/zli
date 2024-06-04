@@ -21,7 +21,7 @@ pub fn CliCommand(
             var args_iter = try std.process.argsWithAllocator(allocator);
             defer args_iter.deinit();
             assert(args_iter.skip());
-            return @This().parseWithArgs(allocator, &args_iter);
+            return @This().parseWithIterator(allocator, &args_iter);
         }
 
         pub fn parseOrExit(allocator: Allocator, status: u8) ParsedResult {
@@ -34,9 +34,9 @@ pub fn CliCommand(
             };
         }
 
-        pub fn parseWithArgs(
+        pub fn parseWithIterator(
             allocator: Allocator,
-            args_iter: *ArgIterator,
+            args_iter: anytype,
         ) Allocator.Error!ParsedResult {
             const args = argsWithDefaults(
                 options.parameters,
@@ -44,7 +44,7 @@ pub fn CliCommand(
                 include_version,
             );
 
-            switch (try zli.parseWithArgs(allocator, args, args_iter)) {
+            switch (try zli.parseWithIterator(allocator, args, args_iter)) {
                 .ok => |parsed_args| {
                     if (parsed_args.options.help) {
                         printHelpToStdout(
@@ -320,10 +320,10 @@ pub const ParseErr = struct {
 pub const Error = error{ Missing, BadValue, Unrecognized, NotLastShort } ||
     std.fmt.ParseIntError || std.fmt.ParseFloatError;
 
-pub fn parseWithArgs(
+pub fn parseWithIterator(
     allocator: Allocator,
     comptime args: []const Arg,
-    args_iter: *std.process.ArgIterator,
+    args_iter: anytype,
 ) !ParseResult(args) {
     var options: Options(args) = .{};
     var positional = std.ArrayList([:0]u8).init(allocator);
@@ -352,7 +352,7 @@ fn parseArg(
     comptime args: []const Arg,
     allocator: Allocator,
     options: *Options(args),
-    args_iter: *std.process.ArgIterator,
+    args_iter: anytype,
     arg: []const u8,
 ) !?ParseErr {
     assert(arg.len > 1);
@@ -430,7 +430,7 @@ fn parseArgValue(
     comptime s: Arg,
     allocator: Allocator,
     value_opt: ?[]const u8,
-    args_iter: *std.process.ArgIterator,
+    args_iter: anytype,
 ) !union(enum) {
     ok: s.type,
     err: ParseErr,
@@ -493,7 +493,7 @@ pub fn parse(allocator: Allocator, comptime args: []const Arg) Allocator.Error!P
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     assert(args_iter.skip());
-    return parseWithArgs(allocator, args, &args_iter);
+    return parseWithIterator(allocator, args, &args_iter);
 }
 
 pub const ArgName = union(enum) {
@@ -645,7 +645,6 @@ fn failCompilationBadType(comptime T: type) noreturn {
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
-const ArgIterator = std.process.ArgIterator;
 
 const getTerminalSize = @import("util.zig").getTerminalSize;
 
