@@ -14,7 +14,7 @@ zli is a CLI argument parsing module for Zig. The aim is to provide CLI paramete
   - [x] automatic handling of `--help` and `--version` options
   - [x] typed argument parsing
     + supports booleans, floats, integers, enums, `[]u8` and `[:s]u8` (for some sentinel `s`)
-  - [ ] git-style subcommands
+  - [x] git-style subcommands
 
 ## usage
 A usage example is given by `src/main.zig`. CLI parameters are declared like so:
