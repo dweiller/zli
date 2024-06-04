@@ -225,6 +225,31 @@ test "option appearing multiple times" {
     try check("-l arg 1 -l arg-2", .{ .@"long-short" = "arg-2" });
 }
 
+test "unrecognized option" {
+    try std.testing.expectError(error.Unrecognized, check("-u", .{}));
+    try std.testing.expectError(error.Unrecognized, check("-u -1", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("-1 -u", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("-1u", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("-u1", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("--long-short long-string-arg -u", .{
+        .@"long-short" = "long-string-arg",
+    }));
+    try std.testing.expectError(error.Unrecognized, check("-u --long-short long-string-arg", .{
+        .@"long-short" = "long-string-arg",
+    }));
+    try std.testing.expectError(error.Unrecognized, check("--bad", .{}));
+    try std.testing.expectError(error.Unrecognized, check("--bad -1", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("-1 --bad", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("-12 --bad", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("--bad -12", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("--long-short long-string-arg --bad", .{
+        .@"long-short" = "long-string-arg",
+    }));
+    try std.testing.expectError(error.Unrecognized, check("--bad --long-short long-string-arg", .{
+        .@"long-short" = "long-string-arg",
+    }));
+}
+
 fn check(argv: []const u8, expected: zli.Options(arg_spec)) !void {
     var iter = std.mem.tokenizeScalar(u8, argv, ' ');
 
@@ -233,7 +258,10 @@ fn check(argv: []const u8, expected: zli.Options(arg_spec)) !void {
         &iter,
     )) {
         .ok => |v| v,
-        .err => |e| return e.err,
+        .err => |e| {
+            e.deinit(std.testing.allocator);
+            return e.err;
+        },
     };
     defer params.deinit(std.testing.allocator);
 
