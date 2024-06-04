@@ -387,6 +387,11 @@ fn parseArg(
             if (s.name.matchesShort(arg_char)) {
                 switch (try parseArgValue(s, allocator, null, args_iter)) {
                     .ok => |v| {
+                        if (comptime @typeInfo(s.type) == .Pointer) {
+                            if (@field(options, s.fieldName())) |slice| {
+                                allocator.free(slice);
+                            }
+                        }
                         @field(options, s.fieldName()) = v;
                         break;
                     },
@@ -410,7 +415,14 @@ fn parseArg(
                         null;
 
                     switch (try parseArgValue(s, allocator, embedded_value, args_iter)) {
-                        .ok => |v| @field(options, s.fieldName()) = v,
+                        .ok => |v| {
+                            if (comptime @typeInfo(s.type) == .Pointer) {
+                                if (@field(options, s.fieldName())) |slice| {
+                                    allocator.free(slice);
+                                }
+                            }
+                            @field(options, s.fieldName()) = v;
+                        },
                         .err => |e| return e,
                     }
                     break;
