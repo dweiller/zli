@@ -280,6 +280,10 @@ pub const ParseErr = struct {
     string: []const u8,
     err: Error,
 
+    pub fn deinit(self: ParseErr, allocator: Allocator) void {
+        allocator.free(self.string);
+    }
+
     pub fn renderToStdErr(value: ParseErr) void {
         value.render(std.io.getStdErr().writer()) catch {};
     }
@@ -327,12 +331,38 @@ pub fn parseWithIterator(
 ) !ParseResult(args) {
     var options: Options(args) = .{};
     var positional = std.ArrayList([:0]u8).init(allocator);
+    errdefer {
+        for (positional.items) |item| {
+            allocator.free(item);
+        }
+        positional.deinit();
+        inline for (args) |s| {
+            if (comptime @typeInfo(s.type) == .Pointer) {
+                if (@field(options, s.fieldName())) |slice| {
+                    allocator.free(slice);
+                }
+            }
+        }
+    }
 
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) break;
 
         if (arg.len > 1 and arg[0] == '-') {
-            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| return .{ .err = e };
+            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| {
+                for (positional.items) |item| {
+                    allocator.free(item);
+                }
+                positional.deinit();
+                inline for (args) |s| {
+                    if (comptime @typeInfo(s.type) == .Pointer) {
+                        if (@field(options, s.fieldName())) |slice| {
+                            allocator.free(slice);
+                        }
+                    }
+                }
+                return .{ .err = e };
+            }
         } else {
             try positional.append(try allocator.dupeZ(u8, arg));
         }
