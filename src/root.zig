@@ -2,8 +2,14 @@ const zli = @This();
 
 pub const CliOptions = struct {
     parameters: []const Arg = &.{},
+    subcommands: []const Command = &.{},
     help_message: []const u8 = &.{},
     version: ?std.SemanticVersion = null,
+};
+
+pub const Command = struct {
+    name: [:0]const u8,
+    parameters: []const Arg = &.{},
 };
 
 pub fn CliCommand(
@@ -12,9 +18,12 @@ pub fn CliCommand(
 ) type {
     const include_version = options.version != null;
     checkNameClash(options.parameters, include_version);
+    for (options.subcommands) |s| {
+        checkNameClash(s.parameters, false);
+    }
 
     return struct {
-        pub const ParsedResult = ParseResult(options.parameters);
+        pub const ParsedResult = ParseResult(options.parameters, options.subcommands);
         pub const Params = ParsedResult.Params;
 
         pub fn parse(allocator: Allocator) Allocator.Error!ParsedResult {
@@ -43,8 +52,22 @@ pub fn CliCommand(
                 true,
                 include_version,
             );
+            const subcommands = comptime blk: {
+                var subcommands: [options.subcommands.len]Command = undefined;
+                for (&subcommands, options.subcommands) |*sc, o| {
+                    sc.* = o;
+                    sc.parameters = argsWithDefaults(o.parameters, true, false);
+                }
+                break :blk subcommands;
+            };
 
-            switch (try zli.parseWithIterator(allocator, args, args_iter)) {
+            const parse_result = if (options.subcommands.len == 0)
+                try zli.parseWithIterator(allocator, args, args_iter)
+            else result: {
+                break :result try zli.parseSubcommandsWithIterator(allocator, args, &subcommands, args_iter);
+            };
+
+            switch (parse_result) {
                 .ok => |parsed_args| {
                     if (parsed_args.options.help) {
                         printHelpToStdout(
@@ -63,12 +86,43 @@ pub fn CliCommand(
                         }
                     }
 
+                    const subcommand = if (options.subcommands.len == 0)
+                        void{}
+                    else if (parsed_args.subcommand) |sc| s: {
+                        switch (sc) {
+                            inline else => |opts, tag| {
+                                const index = comptime for (options.subcommands, 0..) |s, i| {
+                                    if (std.mem.eql(u8, s.name, @tagName(tag))) break i;
+                                } else unreachable;
+                                if (opts.help) {
+                                    printSubcommandHelpToStdout(
+                                        name ++ " " ++ @tagName(tag),
+                                        index,
+                                        options,
+                                        true,
+                                    ) catch std.process.exit(1);
+                                    std.process.exit(0);
+                                }
+
+                                var sub_opts: Options(options.subcommands[index].parameters) = undefined;
+                                inline for (@typeInfo(@TypeOf(sub_opts)).Struct.fields) |field| {
+                                    @field(sub_opts, field.name) = @field(opts, field.name);
+                                }
+                                break :s @unionInit(ParsedResult.Params.CommandType, @tagName(tag), sub_opts);
+                            },
+                        }
+                    } else null;
+
                     var opts: Options(options.parameters) = .{};
                     inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {
                         @field(opts, field.name) = @field(parsed_args.options, field.name);
                     }
 
-                    return .{ .ok = .{ .options = opts, .positional = parsed_args.positional } };
+                    return .{ .ok = .{
+                        .options = opts,
+                        .subcommand = subcommand,
+                        .positional = parsed_args.positional,
+                    } };
                 },
                 .err => |err| return .{ .err = err },
             }
@@ -119,6 +173,37 @@ pub fn printHelpToStdout(
         columns,
         name,
         options,
+        include_help,
+    );
+}
+
+pub fn printSubcommandHelpToStdout(
+    name: []const u8,
+    comptime subcommand_index: usize,
+    comptime options: CliOptions,
+    comptime include_help: bool,
+) std.fs.File.Writer.Error!void {
+    assert(options.subcommands.len > subcommand_index);
+
+    const stdout = std.io.getStdOut();
+    const columns: ?usize = if (stdout.isTty())
+        if (getTerminalSize()) |size|
+            size.columns
+        else
+            null
+    else
+        null;
+
+    const cli_opts: CliOptions = .{
+        .parameters = options.subcommands[subcommand_index].parameters,
+        .version = options.version,
+    };
+
+    try printHelp(
+        stdout.writer(),
+        columns,
+        name,
+        cli_opts,
         include_help,
     );
 }
@@ -242,7 +327,10 @@ pub fn writeVersion(
     if (other.len > 0) try writer.print("{s}\n", .{other});
 }
 
-pub fn ParseResult(comptime spec: []const Arg) type {
+pub fn ParseResult(
+    comptime spec: []const Arg,
+    comptime subcommands: []const Command,
+) type {
     return union(enum) {
         ok: Params,
         err: ParseErr,
@@ -255,8 +343,11 @@ pub fn ParseResult(comptime spec: []const Arg) type {
         }
 
         pub const Params = struct {
-            options: Options(spec),
-            positional: []const [:0]const u8,
+            pub const CommandType = CommandOptions(subcommands);
+            options: Options(spec) = .{},
+            subcommand: if (subcommands.len == 0) void else ?CommandType =
+                if (subcommands.len == 0) void{} else null,
+            positional: []const [:0]const u8 = &.{},
 
             pub fn deinit(self: Params, allocator: Allocator) void {
                 inline for (std.meta.fields(@TypeOf(self.options))) |field| {
@@ -270,6 +361,25 @@ pub fn ParseResult(comptime spec: []const Arg) type {
                 }
                 for (self.positional) |arg| allocator.free(arg);
                 allocator.free(self.positional);
+
+                if (subcommands.len == 0) return;
+
+                if (self.subcommand) |sub| {
+                    const active = std.meta.activeTag(sub);
+                    inline for (subcommands) |command| {
+                        if (std.mem.eql(u8, command.name, @tagName(active))) {
+                            inline for (std.meta.fields(Options(command.parameters))) |field| {
+                                if (field.type == bool) continue;
+                                const Child = @typeInfo(field.type).Optional.child;
+                                if (@typeInfo(Child) == .Pointer) {
+                                    if (@field(@field(sub, command.name), field.name)) |slice| {
+                                        allocator.free(slice);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         };
     };
@@ -328,7 +438,7 @@ pub fn parseWithIterator(
     allocator: Allocator,
     comptime args: []const Arg,
     args_iter: anytype,
-) !ParseResult(args) {
+) !ParseResult(args, &.{}) {
     var options: Options(args) = .{};
     var positional = std.ArrayList([:0]u8).init(allocator);
     errdefer {
@@ -531,11 +641,98 @@ fn parseArgValue(
     return .{ .ok = v };
 }
 
-pub fn parse(allocator: Allocator, comptime args: []const Arg) Allocator.Error!ParseResult(args) {
+pub fn parseSubcommandsWithIterator(
+    allocator: Allocator,
+    comptime args: []const Arg,
+    comptime subcommands: []const Command,
+    args_iter: anytype,
+) !ParseResult(args, subcommands) {
+    if (subcommands.len == 0) return parseWithIterator(allocator, args, args_iter);
+
+    var options: Options(args) = .{};
+
+    const p = while (args_iter.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--")) break true;
+
+        if (arg.len > 1 and arg[0] == '-') {
+            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| return .{ .err = e };
+        } else {
+            inline for (subcommands) |s| {
+                if (std.mem.eql(u8, arg, s.name)) {
+                    const subopts = switch (try parseWithIterator(allocator, s.parameters, args_iter)) {
+                        .ok => |o| o,
+                        .err => |err| return .{ .err = err },
+                    };
+
+                    return .{ .ok = .{
+                        .options = options,
+                        .subcommand = @unionInit(CommandOptions(subcommands), s.name, subopts.options),
+                        .positional = subopts.positional,
+                    } };
+                }
+            } else break false;
+        }
+    } else true;
+
+    var positional = std.ArrayList([:0]u8).init(allocator);
+    errdefer {
+        for (positional.items) |item| {
+            allocator.free(item);
+        }
+        positional.deinit();
+        inline for (args) |s| {
+            if (comptime @typeInfo(s.type) == .Pointer) {
+                if (@field(options, s.fieldName())) |slice| {
+                    allocator.free(slice);
+                }
+            }
+        }
+    }
+
+    if (!p) {
+        while (args_iter.next()) |arg| {
+            if (std.mem.eql(u8, arg, "--")) break;
+
+            if (arg.len > 1 and arg[0] == '-') {
+                if (try parseArg(args, allocator, &options, args_iter, arg)) |e| {
+                    for (positional.items) |item| {
+                        allocator.free(item);
+                    }
+                    positional.deinit();
+                    inline for (args) |s| {
+                        if (comptime @typeInfo(s.type) == .Pointer) {
+                            if (@field(options, s.fieldName())) |slice| {
+                                allocator.free(slice);
+                            }
+                        }
+                    }
+                    return .{ .err = e };
+                }
+            } else {
+                try positional.append(try allocator.dupeZ(u8, arg));
+            }
+        }
+    }
+
+    while (args_iter.next()) |arg| {
+        try positional.append(try allocator.dupeZ(u8, arg));
+    }
+
+    return .{ .ok = .{
+        .options = options,
+        .positional = try positional.toOwnedSlice(),
+    } };
+}
+
+pub fn parse(
+    allocator: Allocator,
+    comptime args: []const Arg,
+    comptime subcommands: []const Command,
+) Allocator.Error!ParseResult(args, &.{}) {
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     assert(args_iter.skip());
-    return parseWithIterator(allocator, args, &args_iter);
+    return parseSubcommandsWithIterator(allocator, args, subcommands, &args_iter);
 }
 
 pub const ArgName = union(enum) {
@@ -673,6 +870,40 @@ pub fn Options(comptime args: []const Arg) type {
             .fields = &fields,
             .decls = &.{},
             .is_tuple = false,
+        },
+    });
+}
+
+pub fn CommandOptions(comptime subcommands: []const Command) type {
+    var tag_fields: [subcommands.len]std.builtin.Type.EnumField = undefined;
+    var fields: [subcommands.len]std.builtin.Type.UnionField = undefined;
+    for (&fields, &tag_fields, subcommands, 0..) |*f, *t, s, i| {
+        t.* = .{
+            .name = s.name,
+            .value = i,
+        };
+        f.* = .{
+            .name = s.name,
+            .type = Options(s.parameters),
+            .alignment = @alignOf(Options(s.parameters)),
+        };
+    }
+
+    const Tag = @Type(.{
+        .Enum = .{
+            .tag_type = std.math.IntFittingRange(0, subcommands.len -| 1),
+            .fields = &tag_fields,
+            .decls = &.{},
+            .is_exhaustive = true,
+        },
+    });
+
+    return @Type(.{
+        .Union = .{
+            .layout = .auto,
+            .tag_type = Tag,
+            .fields = &fields,
+            .decls = &.{},
         },
     });
 }
