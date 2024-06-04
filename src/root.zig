@@ -360,11 +360,12 @@ fn parseArg(
     assert(!std.mem.eql(u8, arg, "--"));
 
     if (arg[1] != '-') {
-        inline for (args) |s| {
-            for (arg[1 .. arg.len - 1]) |arg_char| {
+        for (arg[1 .. arg.len - 1]) |arg_char| {
+            inline for (args) |s| {
                 if (s.type == bool) {
                     if (s.name.matchesShort(arg_char)) {
                         @field(options, s.fieldName()) = true;
+                        break;
                     }
                 } else {
                     if (s.name.matchesShort(arg_char)) {
@@ -375,15 +376,28 @@ fn parseArg(
                         };
                     }
                 }
-            }
-            const arg_char = arg[arg.len - 1];
+            } else return .{
+                .arg_name = "",
+                .string = try allocator.dupe(u8, arg),
+                .err = Error.Unrecognized,
+            };
+        }
+        const arg_char = arg[arg.len - 1];
+        inline for (args) |s| {
             if (s.name.matchesShort(arg_char)) {
                 switch (try parseArgValue(s, allocator, null, args_iter)) {
-                    .ok => |v| @field(options, s.fieldName()) = v,
+                    .ok => |v| {
+                        @field(options, s.fieldName()) = v;
+                        break;
+                    },
                     .err => |e| return e,
                 }
             }
-        }
+        } else return .{
+            .arg_name = "",
+            .string = try allocator.dupe(u8, arg),
+            .err = Error.Unrecognized,
+        };
     } else if (arg.len > 2 and arg[1] == '-') {
         inline for (args) |s| {
             if (s.name == .short) continue;
@@ -403,7 +417,11 @@ fn parseArg(
                 },
                 .no => {},
             }
-        }
+        } else return .{
+            .arg_name = "",
+            .string = try allocator.dupe(u8, arg),
+            .err = Error.Unrecognized,
+        };
     }
     return null;
 }
