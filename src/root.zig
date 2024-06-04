@@ -331,53 +331,8 @@ pub fn parseWithArgs(
     while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) break;
 
-        if (arg.len > 1 and arg[0] == '-' and arg[1] != '-') {
-            inline for (args) |s| {
-                for (arg[1 .. arg.len - 1]) |arg_char| {
-                    if (s.type == bool) {
-                        if (s.name.matchesShort(arg_char)) {
-                            @field(options, s.fieldName()) = true;
-                        }
-                    } else {
-                        if (s.name.matchesShort(arg_char)) {
-                            return .{
-                                .err = .{
-                                    .arg_name = s.paramName(),
-                                    .string = try allocator.dupe(u8, arg),
-                                    .err = Error.NotLastShort,
-                                },
-                            };
-                        }
-                    }
-                }
-                const arg_char = arg[arg.len - 1];
-                if (s.name.matchesShort(arg_char)) {
-                    switch (try parseArgValue(s, allocator, null, args_iter)) {
-                        .ok => |v| @field(options, s.fieldName()) = v,
-                        .err => |e| return .{ .err = e },
-                    }
-                }
-            }
-        } else if (arg.len > 2 and std.mem.startsWith(u8, arg, "--")) {
-            inline for (args) |s| {
-                if (s.name == .short) continue;
-                const match = s.name.matchesLong(arg[2..]);
-                switch (match) {
-                    .yes, .long_with_eql => |tag| {
-                        const embedded_value = if (tag == .long_with_eql)
-                            arg[2 + s.name.long.full.len + 1 ..]
-                        else
-                            null;
-
-                        switch (try parseArgValue(s, allocator, embedded_value, args_iter)) {
-                            .ok => |v| @field(options, s.fieldName()) = v,
-                            .err => |e| return .{ .err = e },
-                        }
-                        break;
-                    },
-                    .no => {},
-                }
-            }
+        if (arg.len > 1 and arg[0] == '-') {
+            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| return .{ .err = e };
         } else {
             try positional.append(try allocator.dupeZ(u8, arg));
         }
@@ -391,6 +346,66 @@ pub fn parseWithArgs(
         .options = options,
         .positional = try positional.toOwnedSlice(),
     } };
+}
+
+fn parseArg(
+    comptime args: []const Arg,
+    allocator: Allocator,
+    options: *Options(args),
+    args_iter: *std.process.ArgIterator,
+    arg: []const u8,
+) !?ParseErr {
+    assert(arg.len > 1);
+    assert(arg[0] == '-');
+    assert(!std.mem.eql(u8, arg, "--"));
+
+    if (arg[1] != '-') {
+        inline for (args) |s| {
+            for (arg[1 .. arg.len - 1]) |arg_char| {
+                if (s.type == bool) {
+                    if (s.name.matchesShort(arg_char)) {
+                        @field(options, s.fieldName()) = true;
+                    }
+                } else {
+                    if (s.name.matchesShort(arg_char)) {
+                        return .{
+                            .arg_name = s.paramName(),
+                            .string = try allocator.dupe(u8, arg),
+                            .err = Error.NotLastShort,
+                        };
+                    }
+                }
+            }
+            const arg_char = arg[arg.len - 1];
+            if (s.name.matchesShort(arg_char)) {
+                switch (try parseArgValue(s, allocator, null, args_iter)) {
+                    .ok => |v| @field(options, s.fieldName()) = v,
+                    .err => |e| return e,
+                }
+            }
+        }
+    } else if (arg.len > 2 and arg[1] == '-') {
+        inline for (args) |s| {
+            if (s.name == .short) continue;
+            const match = s.name.matchesLong(arg[2..]);
+            switch (match) {
+                .yes, .long_with_eql => |tag| {
+                    const embedded_value = if (tag == .long_with_eql)
+                        arg[2 + s.name.long.full.len + 1 ..]
+                    else
+                        null;
+
+                    switch (try parseArgValue(s, allocator, embedded_value, args_iter)) {
+                        .ok => |v| @field(options, s.fieldName()) = v,
+                        .err => |e| return e,
+                    }
+                    break;
+                },
+                .no => {},
+            }
+        }
+    }
+    return null;
 }
 
 fn parseArgValue(
