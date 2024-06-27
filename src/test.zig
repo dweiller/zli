@@ -34,7 +34,52 @@ const arg_spec: []const zli.Arg = &.{
         .type = bool,
     },
 };
+
+const sub_arg_spec: []const zli.Arg = &.{
+    .{
+        .name = .{ .long = .{ .full = "s-long-short", .short = 'l' } },
+        .short_help = "long-short option",
+        .type = []const u8,
+    },
+    .{
+        .name = .{ .short = 't' },
+        .short_help = "short option",
+        .type = u8,
+    },
+    .{
+        .name = .{ .long = .{ .full = "s-enum-option" } },
+        .short_help = "enum-valued option",
+        .type = enum { yes, no },
+    },
+    .{
+        .name = .{ .long = .{ .full = "s-flag-1", .short = '1' } },
+        .short_help = "long-short flag",
+        .type = bool,
+    },
+    .{
+        .name = .{ .short = '3' },
+        .short_help = "short flag",
+        .type = bool,
+    },
+    .{
+        .name = .{ .long = .{ .full = "s-flag-3" } },
+        .short_help = "long flag",
+        .type = bool,
+    },
+};
+
+const sub_spec: []const zli.Command = &.{
+    .{
+        .name = "no-opts",
+    },
+    .{
+        .name = "has-opts",
+        .parameters = sub_arg_spec,
+    },
+};
+
 const Cli = zli.CliCommand("test-cli", .{ .parameters = arg_spec });
+const SubCli = zli.CliCommand("test-sub-cli", .{ .parameters = arg_spec, .subcommands = sub_spec });
 
 test "single long option" {
     var argv = std.ArrayList(u8).init(std.testing.allocator);
@@ -54,6 +99,23 @@ test "single long option" {
         @field(expected, a.fieldName()) = genArgValue(a.type);
 
         try check(argv.items, expected);
+    }
+
+    inline for (sub_arg_spec) |a| {
+        if (a.name != .long) continue;
+        argv.clearRetainingCapacity();
+        try argv.appendSlice("has-opts ");
+        try argv.writer().print("--{s}", .{a.name.long.full});
+        try argv.append(' ');
+        if (genCliArgValue(a.type)) |v| {
+            try argv.appendSlice(v);
+            try argv.append(' ');
+        }
+
+        var expected: zli.Options(sub_arg_spec) = .{};
+        @field(expected, a.fieldName()) = genArgValue(a.type);
+
+        try checkSub(argv.items, .{}, .{ .@"has-opts" = expected });
     }
 }
 
@@ -77,6 +139,25 @@ test "all long options" {
     }
 
     try check(argv.items, expected);
+
+    try argv.appendSlice("has-opts ");
+
+    var sub_expected: zli.Options(sub_arg_spec) = .{};
+
+    inline for (sub_arg_spec) |a| {
+        if (a.name != .long) continue;
+        try argv.writer().print("--{s}", .{a.name.long.full});
+        try argv.append(' ');
+        if (comptime genCliArgValue(a.type)) |v| {
+            try argv.appendSlice(v);
+            try argv.append(' ');
+            @field(sub_expected, a.fieldName()) = genArgValue(a.type);
+        } else {
+            @field(sub_expected, a.fieldName()) = true;
+        }
+    }
+
+    try checkSub(argv.items, expected, .{ .@"has-opts" = sub_expected });
 }
 
 test "single short option" {
@@ -100,6 +181,26 @@ test "single short option" {
         @field(expected, a.fieldName()) = genArgValue(a.type);
 
         try check(argv.items, expected);
+    }
+
+    inline for (sub_arg_spec) |a| {
+        const short = switch (a.name) {
+            .long => |n| if (n.short) |s| s else continue,
+            .short => |s| s,
+        };
+        argv.clearRetainingCapacity();
+        try argv.appendSlice("has-opts ");
+        try argv.writer().print("-{c}", .{short});
+        try argv.append(' ');
+        if (genCliArgValue(a.type)) |v| {
+            try argv.appendSlice(v);
+            try argv.append(' ');
+        }
+
+        var expected: zli.Options(sub_arg_spec) = .{};
+        @field(expected, a.fieldName()) = genArgValue(a.type);
+
+        try checkSub(argv.items, .{}, .{ .@"has-opts" = expected });
     }
 }
 
@@ -126,6 +227,28 @@ test "all short options" {
     }
 
     try check(argv.items, expected);
+
+    try argv.appendSlice("has-opts ");
+
+    var sub_expected: zli.Options(sub_arg_spec) = .{};
+
+    inline for (sub_arg_spec) |a| {
+        const short = switch (a.name) {
+            .long => |n| if (n.short) |s| s else continue,
+            .short => |s| s,
+        };
+        try argv.writer().print("-{c}", .{short});
+        try argv.append(' ');
+        if (comptime genCliArgValue(a.type)) |v| {
+            try argv.appendSlice(v);
+            try argv.append(' ');
+            @field(sub_expected, a.fieldName()) = genArgValue(a.type);
+        } else {
+            @field(sub_expected, a.fieldName()) = true;
+        }
+    }
+
+    try checkSub(argv.items, expected, .{ .@"has-opts" = sub_expected });
 }
 
 test "clustered flags" {
@@ -141,6 +264,19 @@ test "clustered flags" {
         .@"flag-1" = true,
         .@"2" = true,
     });
+
+    try checkSub("has-opts -13", .{}, .{ .@"has-opts" = .{ .@"s-flag-1" = true, .@"3" = true } });
+    try checkSub("has-opts -31l final-flag-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts -1t 8 -3l final-flag-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .t = 8,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
 }
 
 test "long and short options" {
@@ -158,6 +294,21 @@ test "long and short options" {
         .@"flag-1" = true,
         .@"flag-3" = true,
     });
+
+    try checkSub("has-opts -1 --s-long-short long-string-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "long-string-arg",
+        .@"s-flag-1" = true,
+    } });
+    try checkSub("has-opts -1 --s-long-short long-string-arg --s-flag-3", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "long-string-arg",
+        .@"s-flag-1" = true,
+        .@"s-flag-3" = true,
+    } });
+    try checkSub("has-opts --s-long-short long-string-arg --s-flag-3 -1", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "long-string-arg",
+        .@"s-flag-1" = true,
+        .@"s-flag-3" = true,
+    } });
 }
 
 test "clustered and long" {
@@ -191,6 +342,37 @@ test "clustered and long" {
         .@"flag-1" = true,
         .@"2" = true,
     });
+
+    try checkSub("has-opts -13 --s-enum-option yes", .{}, .{ .@"has-opts" = .{
+        .@"s-enum-option" = .yes,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts --s-enum-option yes -13", .{}, .{ .@"has-opts" = .{
+        .@"s-enum-option" = .yes,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts --s-enum-option yes -31l final-flag-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .@"s-enum-option" = .yes,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts -1t 8 --s-enum-option yes -3l final-flag-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .t = 8,
+        .@"s-enum-option" = .yes,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts --s-enum-option yes -1t 8 -3l final-flag-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .t = 8,
+        .@"s-enum-option" = .yes,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
 }
 
 test "clustered and short" {
@@ -216,6 +398,29 @@ test "clustered and short" {
         .@"flag-1" = true,
         .@"2" = true,
     });
+
+    try checkSub("has-opts -13 -t 8", .{}, .{ .@"has-opts" = .{
+        .t = 8,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts -t 8 -13", .{}, .{ .@"has-opts" = .{
+        .t = 8,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts -31l final-flag-arg -t 8", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .t = 8,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
+    try checkSub("has-opts -t 8 -31l final-flag-arg", .{}, .{ .@"has-opts" = .{
+        .@"s-long-short" = "final-flag-arg",
+        .t = 8,
+        .@"s-flag-1" = true,
+        .@"3" = true,
+    } });
 }
 
 test "option appearing multiple times" {
@@ -223,6 +428,11 @@ test "option appearing multiple times" {
     try check("-11", .{ .@"flag-1" = true });
     try check("-s 7 -s 8", .{ .s = 8 });
     try check("-l arg 1 -l arg-2", .{ .@"long-short" = "arg-2" });
+
+    try checkSub("has-opts -1 -1", .{}, .{ .@"has-opts" = .{ .@"s-flag-1" = true } });
+    try checkSub("has-opts -11", .{}, .{ .@"has-opts" = .{ .@"s-flag-1" = true } });
+    try checkSub("has-opts -t 7 -t 8", .{}, .{ .@"has-opts" = .{ .t = 8 } });
+    try checkSub("has-opts -l arg 1 -l arg-2", .{}, .{ .@"has-opts" = .{ .@"s-long-short" = "arg-2" } });
 }
 
 test "unrecognized option" {
@@ -240,13 +450,54 @@ test "unrecognized option" {
     try std.testing.expectError(error.Unrecognized, check("--bad", .{}));
     try std.testing.expectError(error.Unrecognized, check("--bad -1", .{ .@"flag-1" = true }));
     try std.testing.expectError(error.Unrecognized, check("-1 --bad", .{ .@"flag-1" = true }));
-    try std.testing.expectError(error.Unrecognized, check("-12 --bad", .{ .@"flag-1" = true }));
-    try std.testing.expectError(error.Unrecognized, check("--bad -12", .{ .@"flag-1" = true }));
+    try std.testing.expectError(error.Unrecognized, check("-12 --bad", .{ .@"flag-1" = true, .@"2" = true }));
+    try std.testing.expectError(error.Unrecognized, check("--bad -12", .{ .@"flag-1" = true, .@"2" = true }));
     try std.testing.expectError(error.Unrecognized, check("--long-short long-string-arg --bad", .{
         .@"long-short" = "long-string-arg",
     }));
     try std.testing.expectError(error.Unrecognized, check("--bad --long-short long-string-arg", .{
         .@"long-short" = "long-string-arg",
+    }));
+
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -u", .{}, .{
+        .@"has-opts" = .{},
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -u -1", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -1 -u", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -1u", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -u1", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts --s-long-short long-string-arg -u", .{}, .{
+        .@"has-opts" = .{ .@"s-long-short" = "long-string-arg" },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -u --s-long-short long-string-arg", .{}, .{
+        .@"has-opts" = .{ .@"s-long-short" = "long-string-arg" },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts --bad", .{}, .{ .@"has-opts" = .{} }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts --bad -1", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -1 --bad", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts -13 --bad", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true, .@"3" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts --bad -13", .{}, .{
+        .@"has-opts" = .{ .@"s-flag-1" = true, .@"3" = true },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts --s-long-short long-string-arg --bad", .{}, .{
+        .@"has-opts" = .{ .@"s-long-short" = "long-string-arg" },
+    }));
+    try std.testing.expectError(error.Unrecognized, checkSub("has-opts --bad --s-long-short long-string-arg", .{}, .{
+        .@"has-opts" = .{ .@"s-long-short" = "long-string-arg" },
     }));
 }
 
@@ -266,6 +517,29 @@ fn check(argv: []const u8, expected: zli.Options(arg_spec)) !void {
     defer params.deinit(std.testing.allocator);
 
     try std.testing.expectEqualDeep(expected, params.options);
+}
+
+fn checkSub(
+    argv: []const u8,
+    expected: zli.Options(arg_spec),
+    sub_expected: ?SubCli.ParsedResult.Params.CommandType,
+) !void {
+    var iter = std.mem.tokenizeScalar(u8, argv, ' ');
+
+    const params = switch (try SubCli.parseWithIterator(
+        std.testing.allocator,
+        &iter,
+    )) {
+        .ok => |v| v,
+        .err => |e| {
+            e.deinit(std.testing.allocator);
+            return e.err;
+        },
+    };
+    defer params.deinit(std.testing.allocator);
+
+    try std.testing.expectEqualDeep(expected, params.options);
+    try std.testing.expectEqualDeep(sub_expected, params.subcommand);
 }
 
 fn genCliArgValue(comptime T: type) ?[]const u8 {
