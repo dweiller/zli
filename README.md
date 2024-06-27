@@ -6,8 +6,8 @@ zli is a CLI argument parsing module for Zig. The aim is to provide CLI paramete
 
   - [x] short options
     + boolean short options be be given in clusters e.g. `ls -lhF`
-    + the last short option in a cluster may take an argument (i.e. have type other than `bool`)
-      as the next command line word, e.g. `tar -xf file.tar`
+    + the last short option in a cluster may take an argument as the next command line word, e.g.
+      `tar -xf file.tar`
   - [x] long options
     + arguments to long options may be the next command line word or separated from the option by an
       equals sign
