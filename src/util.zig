@@ -13,13 +13,17 @@ pub fn getTerminalSize() ?Size {
 }
 
 fn linuxGetTerminalSize() ?Size {
-    var wsz: std.os.linux.winsize = undefined;
-    const rc = std.os.linux.ioctl(std.io.getStdOut().handle, std.os.linux.T.IOCGWINSZ, @intFromPtr(&wsz));
+    var size: std.posix.winsize = undefined;
+    const rc = std.os.linux.ioctl(
+        std.io.getStdOut().handle,
+        std.os.linux.T.IOCGWINSZ,
+        @intFromPtr(&size),
+    );
     switch (std.os.linux.E.init(rc)) {
         .SUCCESS => {},
         else => return null,
     }
-    return .{ .columns = wsz.ws_col, .rows = wsz.ws_row };
+    return .{ .columns = size.col, .rows = size.row };
 }
 
 fn windowsGetTerminalSize() ?Size {
