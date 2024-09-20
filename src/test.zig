@@ -544,11 +544,11 @@ fn checkSub(
 
 fn genCliArgValue(comptime T: type) ?[]const u8 {
     switch (@typeInfo(T)) {
-        .Int => return "12",
-        .Float => return "12.34",
-        .Enum => |info| return info.fields[0].name,
-        .Bool => return null,
-        .Pointer => |info| {
+        .int => return "12",
+        .float => return "12.34",
+        .@"enum" => |info| return info.fields[0].name,
+        .bool => return null,
+        .pointer => |info| {
             comptime assert(info.child == u8);
             comptime assert(info.size == .Slice);
             return "a-string-arg";
@@ -559,11 +559,11 @@ fn genCliArgValue(comptime T: type) ?[]const u8 {
 
 fn genArgValue(comptime T: type) T {
     switch (@typeInfo(T)) {
-        .Int => return 12,
-        .Float => return 12.34,
-        .Enum => |info| return @enumFromInt(info.fields[0].value),
-        .Bool => return true,
-        .Pointer => |info| {
+        .int => return 12,
+        .float => return 12.34,
+        .@"enum" => |info| return @enumFromInt(info.fields[0].value),
+        .bool => return true,
+        .pointer => |info| {
             comptime assert(info.child == u8);
             comptime assert(info.size == .Slice);
             return "a-string-arg";
