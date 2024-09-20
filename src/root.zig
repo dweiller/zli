@@ -105,7 +105,7 @@ pub fn CliCommand(
                                 }
 
                                 var sub_opts: Options(options.subcommands[index].parameters) = undefined;
-                                inline for (@typeInfo(@TypeOf(sub_opts)).Struct.fields) |field| {
+                                inline for (@typeInfo(@TypeOf(sub_opts)).@"struct".fields) |field| {
                                     @field(sub_opts, field.name) = @field(opts, field.name);
                                 }
                                 break :s @unionInit(ParsedResult.Params.CommandType, @tagName(tag), sub_opts);
@@ -114,7 +114,7 @@ pub fn CliCommand(
                     } else null;
 
                     var opts: Options(options.parameters) = .{};
-                    inline for (@typeInfo(@TypeOf(opts)).Struct.fields) |field| {
+                    inline for (@typeInfo(@TypeOf(opts)).@"struct".fields) |field| {
                         @field(opts, field.name) = @field(parsed_args.options, field.name);
                     }
 
@@ -352,8 +352,8 @@ pub fn ParseResult(
             pub fn deinit(self: Params, allocator: Allocator) void {
                 inline for (std.meta.fields(@TypeOf(self.options))) |field| {
                     if (field.type == bool) continue;
-                    const Child = @typeInfo(field.type).Optional.child;
-                    if (@typeInfo(Child) == .Pointer) {
+                    const Child = @typeInfo(field.type).optional.child;
+                    if (@typeInfo(Child) == .pointer) {
                         if (@field(self.options, field.name)) |slice| {
                             allocator.free(slice);
                         }
@@ -370,8 +370,8 @@ pub fn ParseResult(
                         if (std.mem.eql(u8, command.name, @tagName(active))) {
                             inline for (std.meta.fields(Options(command.parameters))) |field| {
                                 if (field.type == bool) continue;
-                                const Child = @typeInfo(field.type).Optional.child;
-                                if (@typeInfo(Child) == .Pointer) {
+                                const Child = @typeInfo(field.type).optional.child;
+                                if (@typeInfo(Child) == .pointer) {
                                     if (@field(@field(sub, command.name), field.name)) |slice| {
                                         allocator.free(slice);
                                     }
@@ -447,7 +447,7 @@ pub fn parseWithIterator(
         }
         positional.deinit();
         inline for (args) |s| {
-            if (comptime @typeInfo(s.type) == .Pointer) {
+            if (comptime @typeInfo(s.type) == .pointer) {
                 if (@field(options, s.fieldName())) |slice| {
                     allocator.free(slice);
                 }
@@ -465,7 +465,7 @@ pub fn parseWithIterator(
                 }
                 positional.deinit();
                 inline for (args) |s| {
-                    if (comptime @typeInfo(s.type) == .Pointer) {
+                    if (comptime @typeInfo(s.type) == .pointer) {
                         if (@field(options, s.fieldName())) |slice| {
                             allocator.free(slice);
                         }
@@ -527,7 +527,7 @@ fn parseArg(
             if (s.name.matchesShort(arg_char)) {
                 switch (try parseArgValue(s, allocator, null, args_iter)) {
                     .ok => |v| {
-                        if (comptime @typeInfo(s.type) == .Pointer) {
+                        if (comptime @typeInfo(s.type) == .pointer) {
                             if (@field(options, s.fieldName())) |slice| {
                                 allocator.free(slice);
                             }
@@ -556,7 +556,7 @@ fn parseArg(
 
                     switch (try parseArgValue(s, allocator, embedded_value, args_iter)) {
                         .ok => |v| {
-                            if (comptime @typeInfo(s.type) == .Pointer) {
+                            if (comptime @typeInfo(s.type) == .pointer) {
                                 if (@field(options, s.fieldName())) |slice| {
                                     allocator.free(slice);
                                 }
@@ -588,7 +588,7 @@ fn parseArgValue(
     err: ParseErr,
 } {
     const v = switch (@typeInfo(s.type)) {
-        .Int, .Float, .Pointer, .Enum => v: {
+        .int, .float, .pointer, .@"enum" => v: {
             const value = value_opt orelse args_iter.next() orelse return .{
                 .err = .{
                     .arg_name = s.paramName(),
@@ -597,21 +597,21 @@ fn parseArgValue(
                 },
             };
             break :v switch (@typeInfo(s.type)) {
-                .Int => std.fmt.parseInt(s.type, value, 0) catch |err| return .{
+                .int => std.fmt.parseInt(s.type, value, 0) catch |err| return .{
                     .err = .{
                         .arg_name = s.paramName(),
                         .string = try allocator.dupe(u8, value),
                         .err = err,
                     },
                 },
-                .Float => std.fmt.parseFloat(s.type, value) catch |err| return .{
+                .float => std.fmt.parseFloat(s.type, value) catch |err| return .{
                     .err = .{
                         .arg_name = s.paramName(),
                         .string = try allocator.dupe(u8, value),
                         .err = err,
                     },
                 },
-                .Pointer => |p| switch (p.size) {
+                .pointer => |p| switch (p.size) {
                     .One, .Many, .C => failCompilationBadType(s.type),
                     .Slice => slice: {
                         if (p.child != u8) failCompilationBadType(s.type);
@@ -625,7 +625,7 @@ fn parseArgValue(
                         break :slice try allocator.dupe(u8, value);
                     },
                 },
-                .Enum => std.meta.stringToEnum(s.type, value) orelse return .{
+                .@"enum" => std.meta.stringToEnum(s.type, value) orelse return .{
                     .err = .{
                         .arg_name = s.paramName(),
                         .string = try allocator.dupe(u8, value),
@@ -635,7 +635,7 @@ fn parseArgValue(
                 else => unreachable,
             };
         },
-        .Bool => true,
+        .bool => true,
         else => failCompilationBadType(s.type),
     };
     return .{ .ok = v };
@@ -681,7 +681,7 @@ pub fn parseSubcommandsWithIterator(
         }
         positional.deinit();
         inline for (args) |s| {
-            if (comptime @typeInfo(s.type) == .Pointer) {
+            if (comptime @typeInfo(s.type) == .pointer) {
                 if (@field(options, s.fieldName())) |slice| {
                     allocator.free(slice);
                 }
@@ -700,7 +700,7 @@ pub fn parseSubcommandsWithIterator(
                     }
                     positional.deinit();
                     inline for (args) |s| {
-                        if (comptime @typeInfo(s.type) == .Pointer) {
+                        if (comptime @typeInfo(s.type) == .pointer) {
                             if (@field(options, s.fieldName())) |slice| {
                                 allocator.free(slice);
                             }
@@ -819,8 +819,8 @@ fn checkNameClash(comptime args: []const Arg, comptime check_version: bool) void
             @compileError("A long argument's full name must have length greater than 1");
         }
         switch (@typeInfo(arg.type)) {
-            .Int, .Float, .Bool, .Enum => {},
-            .Pointer => |p| {
+            .int, .float, .bool, .@"enum" => {},
+            .pointer => |p| {
                 switch (p.size) {
                     .One, .Many, .C => failCompilationBadType(arg.type),
                     .Slice => if (p.child != u8) failCompilationBadType(arg.type),
@@ -865,7 +865,7 @@ pub fn Options(comptime args: []const Arg) type {
         };
     }
     return @Type(.{
-        .Struct = .{
+        .@"struct" = .{
             .layout = .auto,
             .fields = &fields,
             .decls = &.{},
@@ -890,7 +890,7 @@ pub fn CommandOptions(comptime subcommands: []const Command) type {
     }
 
     const Tag = @Type(.{
-        .Enum = .{
+        .@"enum" = .{
             .tag_type = std.math.IntFittingRange(0, subcommands.len -| 1),
             .fields = &tag_fields,
             .decls = &.{},
@@ -899,7 +899,7 @@ pub fn CommandOptions(comptime subcommands: []const Command) type {
     });
 
     return @Type(.{
-        .Union = .{
+        .@"union" = .{
             .layout = .auto,
             .tag_type = Tag,
             .fields = &fields,
