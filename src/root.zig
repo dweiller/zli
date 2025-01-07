@@ -652,7 +652,7 @@ pub fn parseSubcommandsWithIterator(
     var options: Options(args) = .{};
 
     const p = while (args_iter.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--")) break true;
+        if (std.mem.eql(u8, arg, "--")) break arg;
 
         if (arg.len > 1 and arg[0] == '-') {
             if (try parseArg(args, allocator, &options, args_iter, arg)) |e| return .{ .err = e };
@@ -670,9 +670,9 @@ pub fn parseSubcommandsWithIterator(
                         .positional = subopts.positional,
                     } };
                 }
-            } else break false;
+            } else break arg;
         }
-    } else true;
+    } else "--";
 
     var positional = std.ArrayList([:0]u8).init(allocator);
     errdefer {
@@ -689,10 +689,9 @@ pub fn parseSubcommandsWithIterator(
         }
     }
 
-    if (!p) {
-        while (args_iter.next()) |arg| {
-            if (std.mem.eql(u8, arg, "--")) break;
-
+    {
+        var arg = p;
+        while (!std.mem.eql(u8, arg, "--")) : (arg = args_iter.next() orelse break) {
             if (arg.len > 1 and arg[0] == '-') {
                 if (try parseArg(args, allocator, &options, args_iter, arg)) |e| {
                     for (positional.items) |item| {
