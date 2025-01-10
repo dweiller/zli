@@ -35,16 +35,6 @@ pub fn CliCommand(
             return @This().parseWithIterator(allocator, &args_iter);
         }
 
-        pub fn parseOrExit(allocator: Allocator, status: u8) ParsedResult {
-            return @This().parse(allocator) catch |err| {
-                std.log.err("{s}", .{@errorName(err)});
-                if (@errorReturnTrace()) |trace| {
-                    std.debug.dumpStackTrace(trace.*);
-                }
-                std.process.exit(status);
-            };
-        }
-
         pub fn parseWithIterator(
             allocator: Allocator,
             args_iter: anytype,

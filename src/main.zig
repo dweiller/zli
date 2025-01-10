@@ -43,7 +43,13 @@ pub fn main() void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const parse_result = Cli.parseOrExit(allocator, 3);
+    const parse_result = Cli.parse(allocator) catch |err| {
+        std.log.err("{s}", .{@errorName(err)});
+        if (@errorReturnTrace()) |trace| {
+            std.debug.dumpStackTrace(trace.*);
+        }
+        std.process.exit(3);
+    };
     defer parse_result.deinit(allocator);
 
     const params = switch (parse_result) {
