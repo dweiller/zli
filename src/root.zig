@@ -66,11 +66,8 @@ pub fn CliCommand(
                 break :blk subcommands;
             };
 
-            const parse_result = if (options.subcommands.len == 0)
-                try zli.parseWithIterator(allocator, args, args_iter)
-            else result: {
-                break :result try zli.parseSubcommandsWithIterator(allocator, args, &subcommands, args_iter);
-            };
+            const parse_result =
+                try zli.parseWithIterator(allocator, args, &subcommands, args_iter);
 
             switch (parse_result) {
                 .ok => |parsed_args| {
@@ -438,60 +435,6 @@ pub const ParseErr = struct {
 pub const Error = error{ Missing, BadValue, Unrecognized, NotLastShort } ||
     std.fmt.ParseIntError || std.fmt.ParseFloatError;
 
-pub fn parseWithIterator(
-    allocator: Allocator,
-    comptime args: []const Arg,
-    args_iter: anytype,
-) !ParseResult(args, &.{}) {
-    var options: Options(args) = .{};
-    var positional = std.ArrayList([:0]u8).init(allocator);
-    errdefer {
-        for (positional.items) |item| {
-            allocator.free(item);
-        }
-        positional.deinit();
-        inline for (args) |s| {
-            if (comptime @typeInfo(s.type) == .pointer) {
-                if (@field(options, s.fieldName())) |slice| {
-                    allocator.free(slice);
-                }
-            }
-        }
-    }
-
-    while (args_iter.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--")) break;
-
-        if (arg.len > 1 and arg[0] == '-') {
-            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| {
-                for (positional.items) |item| {
-                    allocator.free(item);
-                }
-                positional.deinit();
-                inline for (args) |s| {
-                    if (comptime @typeInfo(s.type) == .pointer) {
-                        if (@field(options, s.fieldName())) |slice| {
-                            allocator.free(slice);
-                        }
-                    }
-                }
-                return .{ .err = e };
-            }
-        } else {
-            try positional.append(try allocator.dupeZ(u8, arg));
-        }
-    }
-
-    while (args_iter.next()) |arg| {
-        try positional.append(try allocator.dupeZ(u8, arg));
-    }
-
-    return .{ .ok = .{
-        .options = options,
-        .positional = try positional.toOwnedSlice(),
-    } };
-}
-
 fn parseArg(
     comptime args: []const Arg,
     allocator: Allocator,
@@ -645,14 +588,12 @@ fn parseArgValue(
     return .{ .ok = v };
 }
 
-pub fn parseSubcommandsWithIterator(
+pub fn parseWithIterator(
     allocator: Allocator,
     comptime args: []const Arg,
     comptime subcommands: []const Command,
     args_iter: anytype,
 ) !ParseResult(args, subcommands) {
-    if (subcommands.len == 0) return parseWithIterator(allocator, args, args_iter);
-
     var options: Options(args) = .{};
     errdefer {
         inline for (args) |s| {
@@ -681,7 +622,20 @@ pub fn parseSubcommandsWithIterator(
         } else {
             inline for (subcommands) |s| {
                 if (std.mem.eql(u8, arg, s.name)) {
-                    const subopts = switch (try parseWithIterator(allocator, s.parameters, args_iter)) {
+                    const subsubcommands = comptime blk: {
+                        var subsubcommands: [s.subcommands.len]Command = undefined;
+                        for (&subsubcommands, s.subcommands) |*sc, o| {
+                            sc.* = o;
+                            sc.parameters = argsWithDefaults(o.parameters, o.help_message != null, false);
+                        }
+                        break :blk subsubcommands;
+                    };
+                    const subopts = switch (try parseWithIterator(
+                        allocator,
+                        s.parameters,
+                        &subsubcommands,
+                        args_iter,
+                    )) {
                         .ok => |o| o,
                         .err => |err| return .{ .err = err },
                     };
@@ -746,7 +700,7 @@ pub fn parse(
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     assert(args_iter.skip());
-    return parseSubcommandsWithIterator(allocator, args, subcommands, &args_iter);
+    return parseWithIterator(allocator, args, subcommands, &args_iter);
 }
 
 pub const ArgName = union(enum) {
