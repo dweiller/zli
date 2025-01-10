@@ -366,16 +366,20 @@ pub fn ParseResult(
                 if (subcommands.len == 0) return;
 
                 if (self.subcommand) |sub| {
-                    const active = std.meta.activeTag(sub);
-                    inline for (subcommands) |command| {
-                        if (std.mem.eql(u8, command.name, @tagName(active))) {
-                            inline for (std.meta.fields(Options(command.parameters))) |field| {
-                                if (field.type == bool) continue;
-                                const Child = @typeInfo(field.type).optional.child;
-                                if (@typeInfo(Child) == .pointer) {
-                                    if (@field(@field(sub, command.name), field.name)) |slice| {
-                                        allocator.free(slice);
-                                    }
+                    deinitSubcommand(allocator, sub);
+                }
+            }
+
+            fn deinitSubcommand(allocator: Allocator, sub: CommandType) void {
+                const active = std.meta.activeTag(sub);
+                inline for (subcommands) |command| {
+                    if (std.mem.eql(u8, command.name, @tagName(active))) {
+                        inline for (std.meta.fields(Options(command.parameters))) |field| {
+                            if (field.type == bool) continue;
+                            const Child = @typeInfo(field.type).optional.child;
+                            if (@typeInfo(Child) == .pointer) {
+                                if (@field(@field(sub, command.name), field.name)) |slice| {
+                                    allocator.free(slice);
                                 }
                             }
                         }
