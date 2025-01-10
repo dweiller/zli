@@ -243,7 +243,8 @@ pub fn writeOptions(
 
     const separator = " " ** 8;
     const indent_size = 2;
-    const help_padding = indent_size + separator.len + longest + "  -h, --".len;
+    const option_len_base = "  -h, --".len;
+    const help_padding = indent_size + separator.len + longest + option_len_base;
 
     const max_width = if (columns) |width| max: {
         if (width < min_width + help_padding) break :max null;
@@ -273,6 +274,14 @@ pub fn writeOptions(
             else
                 try writer.print(option_fmt_long ++ "{s}\n", .{ n.full, arg.short_help }),
             .short => |c| try writer.print(option_fmt_short ++ "{s}\n", .{ c, arg.short_help }),
+        }
+        if (@typeInfo(arg.type) == .@"enum") {
+            const pad = option_len_base + 4;
+            try writer.writeAll(" " ** pad ++ "Options:\n");
+            inline for (@typeInfo(arg.type).@"enum".fields) |field| {
+                const enum_option_fmt = " " ** (pad + 2) ++ "{s}\n";
+                try writer.print(enum_option_fmt, .{field.name});
+            }
         }
     }
 }
