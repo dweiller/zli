@@ -654,12 +654,30 @@ pub fn parseSubcommandsWithIterator(
     if (subcommands.len == 0) return parseWithIterator(allocator, args, args_iter);
 
     var options: Options(args) = .{};
+    errdefer {
+        inline for (args) |s| {
+            if (comptime @typeInfo(s.type) == .pointer) {
+                if (@field(options, s.fieldName())) |slice| {
+                    allocator.free(slice);
+                }
+            }
+        }
+    }
 
     const p = while (args_iter.next()) |arg| {
         if (std.mem.eql(u8, arg, "--")) break arg;
 
         if (arg.len > 1 and arg[0] == '-') {
-            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| return .{ .err = e };
+            if (try parseArg(args, allocator, &options, args_iter, arg)) |e| {
+                inline for (args) |s| {
+                    if (comptime @typeInfo(s.type) == .pointer) {
+                        if (@field(options, s.fieldName())) |slice| {
+                            allocator.free(slice);
+                        }
+                    }
+                }
+                return .{ .err = e };
+            }
         } else {
             inline for (subcommands) |s| {
                 if (std.mem.eql(u8, arg, s.name)) {
@@ -684,13 +702,6 @@ pub fn parseSubcommandsWithIterator(
             allocator.free(item);
         }
         positional.deinit();
-        inline for (args) |s| {
-            if (comptime @typeInfo(s.type) == .pointer) {
-                if (@field(options, s.fieldName())) |slice| {
-                    allocator.free(slice);
-                }
-            }
-        }
     }
 
     {
@@ -731,7 +742,7 @@ pub fn parse(
     allocator: Allocator,
     comptime args: []const Arg,
     comptime subcommands: []const Command,
-) Allocator.Error!ParseResult(args, &.{}) {
+) Allocator.Error!ParseResult(args, subcommands) {
     var args_iter = try std.process.argsWithAllocator(allocator);
     defer args_iter.deinit();
     assert(args_iter.skip());
