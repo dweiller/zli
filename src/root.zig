@@ -149,6 +149,12 @@ fn writeHelp(
         60,
         argsWithDefaults(options.parameters, options.include_help_option, options.version != null),
     );
+    if (options.subcommands.len > 0) {
+        try writer.writeAll("\nSubcommands:\n\n");
+        inline for (options.subcommands) |cmd| {
+            try writer.print("    {s}\n", .{cmd.name});
+        }
+    }
 }
 
 pub fn printHelp(
