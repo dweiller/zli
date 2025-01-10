@@ -26,7 +26,9 @@ pub fn CliCommand(
         pub const ParsedResult = ParseResult(options.parameters, options.subcommands);
         pub const Params = ParsedResult.Params;
 
-        pub fn parse(allocator: Allocator) Allocator.Error!ParsedResult {
+        pub const ParseError = error{PrintFailure} || Allocator.Error;
+
+        pub fn parse(allocator: Allocator) ParseError!ParsedResult {
             var args_iter = try std.process.argsWithAllocator(allocator);
             defer args_iter.deinit();
             assert(args_iter.skip());
@@ -46,7 +48,7 @@ pub fn CliCommand(
         pub fn parseWithIterator(
             allocator: Allocator,
             args_iter: anytype,
-        ) Allocator.Error!ParsedResult {
+        ) ParseError!ParsedResult {
             const args = argsWithDefaults(
                 options.parameters,
                 true,
@@ -74,14 +76,14 @@ pub fn CliCommand(
                             name,
                             options,
                             true,
-                        ) catch std.process.exit(1);
+                        ) catch return error.PrintFailure;
                         std.process.exit(0);
                     }
 
                     if (options.version) |version| {
                         if (parsed_args.options.version) {
                             const writer = std.io.getStdOut().writer();
-                            writeVersion(writer, name, version, "") catch std.process.exit(1);
+                            writeVersion(writer, name, version, "") catch return error.PrintFailure;
                             std.process.exit(0);
                         }
                     }
@@ -100,7 +102,7 @@ pub fn CliCommand(
                                         index,
                                         options,
                                         true,
-                                    ) catch std.process.exit(1);
+                                    ) catch return error.PrintFailure;
                                     std.process.exit(0);
                                 }
 
