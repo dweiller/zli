@@ -612,10 +612,10 @@ fn parseArgValue(
                     },
                 },
                 .pointer => |p| switch (p.size) {
-                    .One, .Many, .C => failCompilationBadType(s.type),
-                    .Slice => slice: {
+                    .one, .many, .c => failCompilationBadType(s.type),
+                    .slice => slice: {
                         if (p.child != u8) failCompilationBadType(s.type);
-                        if (p.sentinel) |sentinel_ptr| {
+                        if (p.sentinel()) |sentinel_ptr| {
                             const sentinel = @as(*align(1) const p.child, @ptrCast(sentinel_ptr)).*;
                             const copy = try allocator.alloc(p.child, value.len + 1);
                             @memcpy(copy[0..value.len], value);
@@ -821,8 +821,8 @@ fn checkNameClash(comptime args: []const Arg, comptime check_version: bool) void
             .int, .float, .bool, .@"enum" => {},
             .pointer => |p| {
                 switch (p.size) {
-                    .One, .Many, .C => failCompilationBadType(arg.type),
-                    .Slice => if (p.child != u8) failCompilationBadType(arg.type),
+                    .one, .many, .c => failCompilationBadType(arg.type),
+                    .slice => if (p.child != u8) failCompilationBadType(arg.type),
                 }
             },
             else => failCompilationBadType(arg.type),
@@ -858,7 +858,7 @@ pub fn Options(comptime args: []const Arg) type {
         f.* = .{
             .name = s.fieldName(),
             .type = if (is_bool) bool else ?s.type,
-            .default_value = if (is_bool) &false else &@as(?s.type, null),
+            .default_value_ptr = if (is_bool) &false else &@as(?s.type, null),
             .is_comptime = false,
             .alignment = @alignOf(?s.type),
         };
