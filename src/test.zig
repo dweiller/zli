@@ -561,7 +561,7 @@ fn genCliArgValue(comptime T: type) ?[]const u8 {
         .bool => return null,
         .pointer => |info| {
             comptime assert(info.child == u8);
-            comptime assert(info.size == .Slice);
+            comptime assert(info.size == .slice);
             return "a-string-arg";
         },
         else => unreachable,
@@ -576,7 +576,7 @@ fn genArgValue(comptime T: type) T {
         .bool => return true,
         .pointer => |info| {
             comptime assert(info.child == u8);
-            comptime assert(info.size == .Slice);
+            comptime assert(info.size == .slice);
             return "a-string-arg";
         },
         else => unreachable,
