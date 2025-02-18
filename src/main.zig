@@ -36,7 +36,27 @@ const version = std.SemanticVersion{
     .patch = 0,
 };
 
-const Cli = zli.CliCommand("zli-example-app", .{ .parameters = &arg_spec, .version = version });
+const Cli = zli.CliCommand("zli-example-app", .{
+    .parameters = &arg_spec,
+    .version = version,
+    .subcommands = &.{
+        .{
+            .name = "sub1",
+            .parameters = &.{
+                .{
+                    .name = .{ .short = 'b' },
+                    .short_help = "subcommand parameters",
+                    .type = bool,
+                },
+                .{
+                    .name = .{ .long = .{ .full = "enum-option" } },
+                    .short_help = "an option taking an enum",
+                    .type = enum { a, ab, abc },
+                },
+            },
+        },
+    },
+});
 
 pub fn main() void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
