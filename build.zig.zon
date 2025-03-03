@@ -1,5 +1,6 @@
 .{
-    .name = "zli",
+    .name = .zli,
+    .fingerprint = 0x5b01c9c389e1408e,
     .version = "0.0.0",
     .paths = .{
         "build.zig",
