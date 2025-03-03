@@ -13,6 +13,7 @@ pub const Command = struct {
     parameters: []const Arg = &.{},
     subcommands: []const Command = &.{},
     help_message: []const u8 = &.{},
+    short_help: []const u8 = &.{},
     include_help_option: bool = true,
 };
 
@@ -148,9 +149,13 @@ fn writeHelp(
     );
     if (options.subcommands.len > 0) {
         try writer.writeAll("\nSubcommands:\n\n");
-        inline for (options.subcommands) |cmd| {
-            try writer.print("    {s}\n", .{cmd.name});
-        }
+        try writeSubcommands(
+            writer,
+            columns,
+            40,
+            60,
+            options.subcommands,
+        );
     }
 }
 
@@ -234,10 +239,7 @@ pub fn writeOptions(
     const longest = comptime length: {
         var length = 0;
         for (spec) |arg| {
-            const arg_name = arg.fieldName();
-            if (arg_name.len > length) {
-                length = arg_name.len;
-            }
+            length = @max(length, arg.fieldName().len);
         }
         break :length length;
     };
@@ -285,6 +287,40 @@ pub fn writeOptions(
                 const enum_option_fmt = " " ** (pad + 2) ++ "{s}\n";
                 try writer.print(enum_option_fmt, .{field.name});
             }
+        }
+    }
+}
+
+pub fn writeSubcommands(
+    writer: anytype,
+    columns: ?usize,
+    min_width: usize,
+    max_col_width: usize,
+    comptime subcommands: []const Command,
+) !void {
+    const longest_name = comptime length: {
+        var length: usize = 0;
+        for (subcommands) |sc| {
+            length = @max(length, sc.name.len);
+        }
+        break :length length;
+    };
+
+    const separator = " " ** 8;
+    const indent_size = 2;
+    const help_padding = indent_size + separator.len + longest_name;
+
+    const max_width = if (columns) |width| max: {
+        if (width < min_width + help_padding) break :max null;
+        break :max @min(width, help_padding + max_col_width);
+    } else null;
+
+    const name_fmt = std.fmt.comptimePrint("{{s: <{d}}}", .{longest_name});
+
+    inline for (subcommands) |sc| {
+        if (max_width) |width| {
+            try writer.print(name_fmt ++ separator, .{sc.name});
+            try writeAlignedTo(writer, help_padding, width, sc.short_help);
         }
     }
 }
@@ -630,7 +666,7 @@ pub fn parseWithIterator(
                         var subsubcommands: [s.subcommands.len]Command = undefined;
                         for (&subsubcommands, s.subcommands) |*sc, o| {
                             sc.* = o;
-                            sc.parameters = argsWithDefaults(o.parameters, o.help_message != null, false);
+                            sc.parameters = argsWithDefaults(o.parameters, o.include_help_option, false);
                         }
                         break :blk subsubcommands;
                     };
