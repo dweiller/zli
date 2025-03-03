@@ -42,6 +42,7 @@ const Cli = zli.CliCommand("zli-example-app", .{
     .subcommands = &.{
         .{
             .name = "sub1",
+            .short_help = "this is a subcommand",
             .parameters = &.{
                 .{
                     .name = .{ .short = 'b' },
@@ -54,6 +55,13 @@ const Cli = zli.CliCommand("zli-example-app", .{
                     .type = enum { a, ab, abc },
                 },
             },
+        },
+        .{
+            .name = "long-subcommand",
+            .short_help = "this does nothing but here is a really long help message anyway in order to trigger line-breaking",
+        },
+        .{
+            .name = "sub-without-help",
         },
     },
 });
