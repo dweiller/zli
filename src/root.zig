@@ -40,13 +40,17 @@ pub fn CliCommand(
             return @This().parseWithIterator(allocator, &args_iter);
         }
 
-        pub fn printHelp() std.fs.File.Writer.Error!void {
+        pub fn printHelp() error{WriteFailed}!void {
             try zli.printHelp(name, options);
         }
 
-        pub fn printVersion() std.fs.File.Writer.Error!void {
-            const writer = std.io.getStdOut().writer();
-            try writeVersion(writer, name, options.version orelse unreachable);
+        pub fn printVersion() error{WriteFailed}!void {
+            const version_string = std.fmt.comptimePrint("{s} {f}", .{
+                name,
+                options.version orelse @compileError("CliCommand has no version"),
+            });
+            var writer = std.fs.File.stdout().writer(&.{});
+            try writer.interface.writeAll(version_string);
         }
 
         pub fn parseWithIterator(
@@ -128,13 +132,13 @@ pub fn CliCommand(
 }
 
 fn writeHelp(
-    writer: anytype,
+    writer: *std.Io.Writer,
     columns: ?usize,
     name: []const u8,
     comptime options: CliOptions,
 ) !void {
     if (options.version) |version| {
-        try writer.print("{s} {}\n", .{ name, version });
+        try writer.print("{s} {f}\n", .{ name, version });
     } else {
         try writer.print("{s}\n", .{name});
     }
@@ -162,8 +166,8 @@ fn writeHelp(
 pub fn printHelp(
     name: []const u8,
     comptime options: CliOptions,
-) std.fs.File.Writer.Error!void {
-    const stdout = std.io.getStdOut();
+) error{WriteFailed}!void {
+    const stdout = std.fs.File.stdout();
     const columns: ?usize = if (stdout.isTty())
         if (getTerminalSize()) |size|
             size.columns
@@ -172,8 +176,9 @@ pub fn printHelp(
     else
         null;
 
+    var writer = stdout.writer(&.{});
     try writeHelp(
-        stdout.writer(),
+        &writer.interface,
         columns,
         name,
         options,
@@ -184,8 +189,8 @@ pub fn printSubcommandHelp(
     name: []const u8,
     comptime subcommand_index: usize,
     comptime options: CliOptions,
-) std.fs.File.Writer.Error!void {
-    const stdout = std.io.getStdOut();
+) error{WriteFailed}!void {
+    const stdout = std.fs.File.stdout();
     const columns: ?usize = if (stdout.isTty())
         if (getTerminalSize()) |size|
             size.columns
@@ -199,8 +204,9 @@ pub fn printSubcommandHelp(
         .version = options.version,
     };
 
+    var writer = stdout.writer(&.{});
     try writeHelp(
-        stdout.writer(),
+        &writer.interface,
         columns,
         name,
         cli_opts,
@@ -230,7 +236,7 @@ pub fn argsWithDefaults(
 }
 
 pub fn writeOptions(
-    writer: anytype,
+    writer: *std.Io.Writer,
     columns: ?usize,
     min_width: usize,
     max_col_width: usize,
@@ -292,7 +298,7 @@ pub fn writeOptions(
 }
 
 pub fn writeSubcommands(
-    writer: anytype,
+    writer: *std.Io.Writer,
     columns: ?usize,
     min_width: usize,
     max_col_width: usize,
@@ -325,8 +331,13 @@ pub fn writeSubcommands(
     }
 }
 
-fn writeAlignedTo(writer: anytype, padding: usize, end: usize, bytes: []const u8) !void {
+fn writeAlignedTo(writer: *std.Io.Writer, padding: usize, end: usize, bytes: []const u8) !void {
     assert(end > padding);
+
+    const use_splat = switch (@typeInfo(@TypeOf(writer))) {
+        .pointer => |info| @hasDecl(info.child, "splatByteAll"),
+        else => @hasDecl(@TypeOf(writer), "splatByteAll"),
+    };
 
     const width = end - padding;
 
@@ -346,22 +357,28 @@ fn writeAlignedTo(writer: anytype, padding: usize, end: usize, bytes: []const u8
 
     while (std.mem.indexOfScalarPos(u8, bytes, current, ' ')) |i| : (current = i + 1) {
         if (i - index > width) {
-            try writer.writeByteNTimes(' ', padding);
+            if (use_splat)
+                try writer.splatByteAll(' ', padding)
+            else
+                try writer.writeByteNTimes(' ', padding);
             try writer.print("{s}\n", .{bytes[index .. current - 1]});
             index = current;
         }
     } else {
-        try writer.writeByteNTimes(' ', padding);
+        if (use_splat)
+            try writer.splatByteAll(' ', padding)
+        else
+            try writer.writeByteNTimes(' ', padding);
         try writer.print("{s}\n", .{bytes[index..]});
     }
 }
 
 pub fn writeVersion(
-    writer: anytype,
+    writer: *std.Io.Writer,
     cannonical_name: []const u8,
     version: std.SemanticVersion,
 ) !void {
-    try writer.print("{s} {}\n", .{ cannonical_name, version });
+    try writer.print("{s} {f}\n", .{ cannonical_name, version });
 }
 
 pub fn ParseResult(
@@ -436,10 +453,11 @@ pub const ParseErr = struct {
     }
 
     pub fn renderToStdErr(value: ParseErr) void {
-        value.render(std.io.getStdErr().writer()) catch {};
+        var writer = std.fs.File.stderr().writer(&.{});
+        value.render(&writer.interface) catch {};
     }
 
-    pub fn render(value: ParseErr, writer: anytype) !void {
+    pub fn render(value: ParseErr, writer: *std.Io.Writer) !void {
         switch (value.err) {
             error.Missing => try writer.print(
                 "missing value for parameter {s}\n",
@@ -690,12 +708,12 @@ pub fn parseWithIterator(
         }
     } else "--";
 
-    var positional = std.ArrayList([:0]u8).init(allocator);
+    var positional: std.ArrayList([:0]u8) = .empty;
     errdefer {
         for (positional.items) |item| {
             allocator.free(item);
         }
-        positional.deinit();
+        positional.deinit(allocator);
     }
 
     {
@@ -706,7 +724,7 @@ pub fn parseWithIterator(
                     for (positional.items) |item| {
                         allocator.free(item);
                     }
-                    positional.deinit();
+                    positional.deinit(allocator);
                     inline for (args) |s| {
                         if (comptime @typeInfo(s.type) == .pointer) {
                             if (@field(options, s.fieldName())) |slice| {
@@ -717,18 +735,18 @@ pub fn parseWithIterator(
                     return .{ .err = e };
                 }
             } else {
-                try positional.append(try allocator.dupeZ(u8, arg));
+                try positional.append(allocator, try allocator.dupeZ(u8, arg));
             }
         }
     }
 
     while (args_iter.next()) |arg| {
-        try positional.append(try allocator.dupeZ(u8, arg));
+        try positional.append(allocator, try allocator.dupeZ(u8, arg));
     }
 
     return .{ .ok = .{
         .options = options,
-        .positional = try positional.toOwnedSlice(),
+        .positional = try positional.toOwnedSlice(allocator),
     } };
 }
 

@@ -82,17 +82,18 @@ const Cli = zli.CliCommand("test-cli", .{ .parameters = arg_spec });
 const SubCli = zli.CliCommand("test-sub-cli", .{ .parameters = arg_spec, .subcommands = sub_spec });
 
 test "single long option" {
-    var argv = std.ArrayList(u8).init(std.testing.allocator);
-    defer argv.deinit();
+    const allocator = std.testing.allocator;
+    var argv: std.ArrayList(u8) = .empty;
+    defer argv.deinit(allocator);
 
     inline for (arg_spec) |a| {
         if (a.name != .long) continue;
         argv.clearRetainingCapacity();
-        try argv.writer().print("--{s}", .{a.name.long.full});
-        try argv.append(' ');
+        try argv.print(allocator, "--{s}", .{a.name.long.full});
+        try argv.append(allocator, ' ');
         if (genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
         }
 
         var expected: zli.Options(arg_spec) = .{};
@@ -104,12 +105,12 @@ test "single long option" {
     inline for (sub_arg_spec) |a| {
         if (a.name != .long) continue;
         argv.clearRetainingCapacity();
-        try argv.appendSlice("has-opts ");
-        try argv.writer().print("--{s}", .{a.name.long.full});
-        try argv.append(' ');
+        try argv.appendSlice(allocator, "has-opts ");
+        try argv.print(allocator, "--{s}", .{a.name.long.full});
+        try argv.append(allocator, ' ');
         if (genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
         }
 
         var expected: zli.Options(sub_arg_spec) = .{};
@@ -120,18 +121,19 @@ test "single long option" {
 }
 
 test "all long options" {
-    var argv = std.ArrayList(u8).init(std.testing.allocator);
-    defer argv.deinit();
+    const allocator = std.testing.allocator;
+    var argv: std.ArrayList(u8) = .empty;
+    defer argv.deinit(allocator);
 
     var expected: zli.Options(arg_spec) = .{};
 
     inline for (arg_spec) |a| {
         if (a.name != .long) continue;
-        try argv.writer().print("--{s}", .{a.name.long.full});
-        try argv.append(' ');
+        try argv.print(allocator, "--{s}", .{a.name.long.full});
+        try argv.append(allocator, ' ');
         if (comptime genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
             @field(expected, a.fieldName()) = genArgValue(a.type);
         } else {
             @field(expected, a.fieldName()) = true;
@@ -140,17 +142,17 @@ test "all long options" {
 
     try check(argv.items, expected, &.{});
 
-    try argv.appendSlice("has-opts ");
+    try argv.appendSlice(allocator, "has-opts ");
 
     var sub_expected: zli.Options(sub_arg_spec) = .{};
 
     inline for (sub_arg_spec) |a| {
         if (a.name != .long) continue;
-        try argv.writer().print("--{s}", .{a.name.long.full});
-        try argv.append(' ');
+        try argv.print(allocator, "--{s}", .{a.name.long.full});
+        try argv.append(allocator, ' ');
         if (comptime genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
             @field(sub_expected, a.fieldName()) = genArgValue(a.type);
         } else {
             @field(sub_expected, a.fieldName()) = true;
@@ -161,8 +163,9 @@ test "all long options" {
 }
 
 test "single short option" {
-    var argv = std.ArrayList(u8).init(std.testing.allocator);
-    defer argv.deinit();
+    const allocator = std.testing.allocator;
+    var argv: std.ArrayList(u8) = .empty;
+    defer argv.deinit(allocator);
 
     inline for (arg_spec) |a| {
         const short = switch (a.name) {
@@ -170,11 +173,11 @@ test "single short option" {
             .short => |s| s,
         };
         argv.clearRetainingCapacity();
-        try argv.writer().print("-{c}", .{short});
-        try argv.append(' ');
+        try argv.print(allocator, "-{c}", .{short});
+        try argv.append(allocator, ' ');
         if (genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
         }
 
         var expected: zli.Options(arg_spec) = .{};
@@ -189,12 +192,12 @@ test "single short option" {
             .short => |s| s,
         };
         argv.clearRetainingCapacity();
-        try argv.appendSlice("has-opts ");
-        try argv.writer().print("-{c}", .{short});
-        try argv.append(' ');
+        try argv.appendSlice(allocator, "has-opts ");
+        try argv.print(allocator, "-{c}", .{short});
+        try argv.append(allocator, ' ');
         if (genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
         }
 
         var expected: zli.Options(sub_arg_spec) = .{};
@@ -205,8 +208,9 @@ test "single short option" {
 }
 
 test "all short options" {
-    var argv = std.ArrayList(u8).init(std.testing.allocator);
-    defer argv.deinit();
+    const allocator = std.testing.allocator;
+    var argv: std.ArrayList(u8) = .empty;
+    defer argv.deinit(allocator);
 
     var expected: zli.Options(arg_spec) = .{};
 
@@ -215,11 +219,11 @@ test "all short options" {
             .long => |n| if (n.short) |s| s else continue,
             .short => |s| s,
         };
-        try argv.writer().print("-{c}", .{short});
-        try argv.append(' ');
+        try argv.print(allocator, "-{c}", .{short});
+        try argv.append(allocator, ' ');
         if (comptime genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
             @field(expected, a.fieldName()) = genArgValue(a.type);
         } else {
             @field(expected, a.fieldName()) = true;
@@ -228,7 +232,7 @@ test "all short options" {
 
     try check(argv.items, expected, &.{});
 
-    try argv.appendSlice("has-opts ");
+    try argv.appendSlice(allocator, "has-opts ");
 
     var sub_expected: zli.Options(sub_arg_spec) = .{};
 
@@ -237,11 +241,11 @@ test "all short options" {
             .long => |n| if (n.short) |s| s else continue,
             .short => |s| s,
         };
-        try argv.writer().print("-{c}", .{short});
-        try argv.append(' ');
+        try argv.print(allocator, "-{c}", .{short});
+        try argv.append(allocator, ' ');
         if (comptime genCliArgValue(a.type)) |v| {
-            try argv.appendSlice(v);
-            try argv.append(' ');
+            try argv.appendSlice(allocator, v);
+            try argv.append(allocator, ' ');
             @field(sub_expected, a.fieldName()) = genArgValue(a.type);
         } else {
             @field(sub_expected, a.fieldName()) = true;
