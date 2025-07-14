@@ -88,10 +88,11 @@ pub fn main() void {
         },
     };
 
-    const stdout = std.io.getStdOut();
-    const writer = stdout.writer();
+    const stdout = std.fs.File.stdout();
+    var writer = stdout.writer(&.{});
 
-    writer.print("parsed args: {}\n", .{params}) catch @panic("failed to write to stdout");
+    writer.interface.print("parsed args: {}\n", .{params}) catch
+        @panic("failed to write to stdout");
 }
 
 const std = @import("std");
