@@ -19,7 +19,7 @@ fn linuxGetTerminalSize() ?Size {
         std.os.linux.T.IOCGWINSZ,
         @intFromPtr(&size),
     );
-    switch (std.os.linux.E.init(rc)) {
+    switch (std.os.linux.errno(rc)) {
         .SUCCESS => {},
         else => return null,
     }

@@ -885,59 +885,67 @@ fn checkNameClash(
 }
 
 pub fn Options(comptime args: []const Arg) type {
-    var fields: [args.len]std.builtin.Type.StructField = undefined;
-    for (&fields, args) |*f, s| {
+    if (args.len == 0) return @Struct(.auto, null, &.{}, &.{}, &.{});
+
+    var names: [args.len][]const u8 = undefined;
+    var tys: [args.len]type = undefined;
+    var attrs: [args.len]std.builtin.Type.StructField.Attributes = undefined;
+
+    for (&names, &tys, &attrs, args) |*name, *ty, *attr, s| {
         const is_bool = s.type == bool;
-        f.* = .{
-            .name = s.fieldName(),
-            .type = if (is_bool) bool else ?s.type,
+        name.* = s.fieldName();
+        ty.* = if (is_bool) bool else ?s.type;
+        attr.* = .{
             .default_value_ptr = if (is_bool) &false else &@as(?s.type, null),
-            .is_comptime = false,
-            .alignment = @alignOf(?s.type),
         };
     }
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &fields,
-            .decls = &.{},
-            .is_tuple = false,
-        },
-    });
+
+    const T = @Struct(
+        .auto,
+        null,
+        &names,
+        &tys,
+        &attrs,
+    );
+    return T;
 }
 
 pub fn CommandOptions(comptime subcommands: []const Command) type {
-    var tag_fields: [subcommands.len]std.builtin.Type.EnumField = undefined;
-    var fields: [subcommands.len]std.builtin.Type.UnionField = undefined;
-    for (&fields, &tag_fields, subcommands, 0..) |*f, *t, s, i| {
-        t.* = .{
-            .name = s.name,
-            .value = i,
-        };
-        f.* = .{
-            .name = s.name,
-            .type = Options(s.parameters),
-            .alignment = @alignOf(Options(s.parameters)),
-        };
+    if (subcommands.len == 0) return @Union(.auto, null, &.{}, &.{}, &.{});
+
+    const TagInt = std.math.IntFittingRange(0, subcommands.len -| 1);
+    var tag_names: [subcommands.len][]const u8 = undefined;
+    var tag_values: [subcommands.len]TagInt = undefined;
+
+    for (&tag_names, &tag_values, subcommands, 0..) |*t, *v, s, i| {
+        t.* = s.name;
+        v.* = i;
     }
 
-    const Tag = @Type(.{
-        .@"enum" = .{
-            .tag_type = std.math.IntFittingRange(0, subcommands.len -| 1),
-            .fields = &tag_fields,
-            .decls = &.{},
-            .is_exhaustive = true,
-        },
-    });
+    var field_names: [subcommands.len][]const u8 = undefined;
+    var field_types: [subcommands.len]type = undefined;
+    var field_attrs: [subcommands.len]std.builtin.Type.UnionField.Attributes = undefined;
 
-    return @Type(.{
-        .@"union" = .{
-            .layout = .auto,
-            .tag_type = Tag,
-            .fields = &fields,
-            .decls = &.{},
-        },
-    });
+    for (&field_names, &field_types, &field_attrs, subcommands) |*n, *t, *a, s| {
+        n.* = s.name;
+        t.* = Options(s.parameters);
+        a.* = .{};
+    }
+
+    const Tag = @Enum(
+        std.math.IntFittingRange(0, subcommands.len -| 1),
+        .exhaustive,
+        &tag_names,
+        &tag_values,
+    );
+
+    return @Union(
+        .auto,
+        Tag,
+        &field_names,
+        &field_types,
+        &field_attrs,
+    );
 }
 
 fn failCompilationBadType(comptime T: type) noreturn {
