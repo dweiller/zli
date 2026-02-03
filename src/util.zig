@@ -15,7 +15,7 @@ pub fn getTerminalSize() ?Size {
 fn linuxGetTerminalSize() ?Size {
     var size: std.posix.winsize = undefined;
     const rc = std.os.linux.ioctl(
-        std.fs.File.stdout().handle,
+        std.Io.File.stdout().handle,
         std.os.linux.T.IOCGWINSZ,
         @intFromPtr(&size),
     );
@@ -29,7 +29,7 @@ fn linuxGetTerminalSize() ?Size {
 fn windowsGetTerminalSize() ?Size {
     var info: std.os.windows.CONSOLE_SCREEN_BUFFER_INFO = undefined;
     if (std.os.windows.TRUE != std.os.windows.kernel32.GetConsoleScreenBufferInfo(
-        std.fs.File.stdout().handle,
+        std.Io.File.stdout().handle,
         &info,
     )) {
         return null;

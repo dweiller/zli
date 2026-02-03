@@ -31,29 +31,30 @@ pub fn CliCommand(
         pub const ParsedResult = ParseResult(options.parameters, options.subcommands);
         pub const Params = ParsedResult.Params;
 
-        pub const ParseError = error{PrintFailure} || Allocator.Error;
+        pub const ParseError = error{WriteFailed} || Allocator.Error;
 
-        pub fn parse(allocator: Allocator) ParseError!ParsedResult {
-            var args_iter = try std.process.argsWithAllocator(allocator);
+        pub fn parse(io: std.Io, allocator: Allocator, args: std.process.Args) ParseError!ParsedResult {
+            var args_iter = try args.iterateAllocator(allocator);
             defer args_iter.deinit();
             assert(args_iter.skip());
-            return @This().parseWithIterator(allocator, &args_iter);
+            return @This().parseWithIterator(io, allocator, &args_iter);
         }
 
-        pub fn printHelp() error{WriteFailed}!void {
-            try zli.printHelp(name, options);
+        pub fn printHelp(io: std.Io) error{WriteFailed}!void {
+            try zli.printHelp(io, name, options);
         }
 
-        pub fn printVersion() error{WriteFailed}!void {
+        pub fn printVersion(io: std.Io) error{WriteFailed}!void {
             const version_string = std.fmt.comptimePrint("{s} {f}", .{
                 name,
                 options.version orelse @compileError("CliCommand has no version"),
             });
-            var writer = std.fs.File.stdout().writer(&.{});
+            var writer = std.Io.File.stdout().writer(io, &.{});
             try writer.interface.writeAll(version_string);
         }
 
         pub fn parseWithIterator(
+            io: std.Io,
             allocator: Allocator,
             args_iter: anytype,
         ) ParseError!ParsedResult {
@@ -77,13 +78,13 @@ pub fn CliCommand(
             switch (parse_result) {
                 .ok => |parsed_args| {
                     if (parsed_args.options.help) {
-                        @This().printHelp() catch return error.PrintFailure;
+                        try @This().printHelp(io);
                         std.process.exit(0);
                     }
 
                     if (options.version) |_| {
                         if (parsed_args.options.version) {
-                            printVersion() catch return error.PrintFailure;
+                            try printVersion(io);
                             std.process.exit(0);
                         }
                     }
@@ -97,11 +98,12 @@ pub fn CliCommand(
                                     if (std.mem.eql(u8, s.name, @tagName(tag))) break i;
                                 } else unreachable;
                                 if (opts.help) {
-                                    printSubcommandHelp(
+                                    try printSubcommandHelp(
+                                        io,
                                         name ++ " " ++ @tagName(tag),
                                         index,
                                         options,
-                                    ) catch return error.PrintFailure;
+                                    );
                                     std.process.exit(0);
                                 }
 
@@ -164,11 +166,12 @@ fn writeHelp(
 }
 
 pub fn printHelp(
+    io: std.Io,
     name: []const u8,
     comptime options: CliOptions,
 ) error{WriteFailed}!void {
-    const stdout = std.fs.File.stdout();
-    const columns: ?usize = if (stdout.isTty())
+    const stdout = std.Io.File.stdout();
+    const columns: ?usize = if (stdout.isTty(io) catch false)
         if (getTerminalSize()) |size|
             size.columns
         else
@@ -176,7 +179,7 @@ pub fn printHelp(
     else
         null;
 
-    var writer = stdout.writer(&.{});
+    var writer = stdout.writer(io, &.{});
     try writeHelp(
         &writer.interface,
         columns,
@@ -186,12 +189,13 @@ pub fn printHelp(
 }
 
 pub fn printSubcommandHelp(
+    io: std.Io,
     name: []const u8,
     comptime subcommand_index: usize,
     comptime options: CliOptions,
 ) error{WriteFailed}!void {
-    const stdout = std.fs.File.stdout();
-    const columns: ?usize = if (stdout.isTty())
+    const stdout = std.Io.File.stdout();
+    const columns: ?usize = if (stdout.isTty(io) catch false)
         if (getTerminalSize()) |size|
             size.columns
         else
@@ -204,7 +208,7 @@ pub fn printSubcommandHelp(
         .version = options.version,
     };
 
-    var writer = stdout.writer(&.{});
+    var writer = stdout.writer(io, &.{});
     try writeHelp(
         &writer.interface,
         columns,
@@ -441,8 +445,8 @@ pub const ParseErr = struct {
         allocator.free(self.string);
     }
 
-    pub fn renderToStdErr(value: ParseErr) void {
-        var writer = std.fs.File.stderr().writer(&.{});
+    pub fn renderToStdErr(value: ParseErr, io: std.Io) void {
+        var writer = std.Io.File.stderr().writer(io, &.{});
         value.render(&writer.interface) catch {};
     }
 
