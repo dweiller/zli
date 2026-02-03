@@ -515,6 +515,7 @@ fn check(argv: []const u8, expected: zli.Options(arg_spec), positional: []const 
     var iter = std.mem.tokenizeScalar(u8, argv, ' ');
 
     const params = switch (try Cli.parseWithIterator(
+        std.testing.io,
         std.testing.allocator,
         &iter,
     )) {
@@ -541,6 +542,7 @@ fn checkSub(
     var iter = std.mem.tokenizeScalar(u8, argv, ' ');
 
     const params = switch (try SubCli.parseWithIterator(
+        std.testing.io,
         std.testing.allocator,
         &iter,
     )) {

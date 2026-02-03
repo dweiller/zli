@@ -66,30 +66,26 @@ const Cli = zli.CliCommand("zli-example-app", .{
     },
 });
 
-pub fn main() void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const parse_result = Cli.parse(allocator) catch |err| {
+pub fn main(init: std.process.Init) void {
+    const parse_result = Cli.parse(init.io, init.gpa, init.minimal.args) catch |err| {
         std.log.err("{s}", .{@errorName(err)});
         if (@errorReturnTrace()) |trace| {
             std.debug.dumpStackTrace(trace);
         }
         std.process.exit(3);
     };
-    defer parse_result.deinit(allocator);
+    defer parse_result.deinit(init.gpa);
 
     const params = switch (parse_result) {
         .ok => |ok| ok,
         .err => |err| {
-            err.renderToStdErr();
+            err.renderToStdErr(init.io);
             std.process.exit(1);
         },
     };
 
-    const stdout = std.fs.File.stdout();
-    var writer = stdout.writer(&.{});
+    const stdout = std.Io.File.stdout();
+    var writer = stdout.writer(init.io, &.{});
 
     writer.interface.print("parsed args: {}\n", .{params}) catch
         @panic("failed to write to stdout");
