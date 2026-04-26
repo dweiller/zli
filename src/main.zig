@@ -70,7 +70,7 @@ pub fn main(init: std.process.Init) void {
     const parse_result = Cli.parse(init.io, init.gpa, init.minimal.args) catch |err| {
         std.log.err("{s}", .{@errorName(err)});
         if (@errorReturnTrace()) |trace| {
-            std.debug.dumpStackTrace(trace);
+            std.debug.dumpErrorReturnTrace(trace);
         }
         std.process.exit(3);
     };

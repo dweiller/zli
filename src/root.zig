@@ -58,7 +58,7 @@ pub fn CliCommand(
             allocator: Allocator,
             args_iter: anytype,
         ) ParseError!ParsedResult {
-            const args = argsWithDefaults(
+            const args = comptime argsWithDefaults(
                 options.parameters,
                 options.include_help_option,
                 include_version,
